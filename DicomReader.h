@@ -15,9 +15,9 @@
  *   Reads DICOM data and contains functions for rotations, translations, and data region selestion
  */
 
-
 #ifndef DICOMREADER_H
 #define DICOMREADER_H
+
 #include "./DICOMParser/DICOMParser.h"
 #include "./DICOMParser/DICOMFile.h"
 #include "./DICOMParser/DICOMAppHelper.h"
@@ -30,11 +30,11 @@
 #include <dirent.h>
 #include <math.h>
 
-const float Pi = 3.14159265358979323846;
+#define PI  3.14159265358979323846
 
+#define MM2CM 0.1
 namespace DICOM
 {
-	
 	/**
 	 * DicomReader
 	 *
@@ -60,6 +60,7 @@ namespace DICOM
             // print to stdout Functions
             void PrintAllFiles( void );
 			void PrintSlice(int slicenum);
+			void PrintInfo( void);
             
             //Data manipulation functions
 			void Rotate3D(float theta, float* axis,float ox,float oy,float oz);
@@ -113,6 +114,9 @@ namespace DICOM
 			DICOMAppHelper *helper;
 
 	};
-}//namespace DICOM
+
+	
+
+} //namespace DICOM
 
 #endif //DICOMREADER_H

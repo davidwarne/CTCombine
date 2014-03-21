@@ -28,7 +28,7 @@ template <class T> const T& max ( const T& a, const T& b ) {
   return (a>b)?a:b;     
 }
 
-const float PI = 3.14159265358979323846;
+#define PI  3.14159265358979323846
 
 
 
@@ -78,5 +78,9 @@ namespace EGS
 			float ***voxelDensity;
 			
 	};
-}	
+
+	
+
+} //namespace EGS
+
 #endif //MYMATH_MATRIX_H

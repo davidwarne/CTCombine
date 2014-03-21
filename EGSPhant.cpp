@@ -1,8 +1,19 @@
-#include"EGSPhant.h"
+/**
+ * EGSPhant.cpp (Inplementation)
+ *
+ * @Author Mark Dwyer
+ * @Contact m2.dwyer@qut.edu.au
+ * @Created 07/10/2008
+ *
+ * Most of the crap here has been ripped from:
+ * http://www.irs.inms.nrc.ca/BEAM/user_manuals/pirs794/node99.html
+ *
+ */
 
+
+#include "EGSPhant.h"
 namespace EGS
 {
-
 	/****************************
 	 *		Constructors
 	 ***************************/
@@ -211,7 +222,6 @@ namespace EGS
 			fprintf(file, "\n");
 		}
 		fclose(file);
-		fprintf(stdout, "%s successfully written!\n", input_filename);
 	};
 
 	/*
@@ -319,18 +329,18 @@ namespace EGS
 
 	int EGSPhant::PrintStats(void)
 	{
-		fprintf(stdout, "Number of Media = %d\n", numberOfMedia);
-		for (int i = 0; i<numberOfMedia; i++)
-		{
-			fprintf(stdout, "%s\n", mediaNames[i].c_str());
-		}
+		fprintf(stdout,"\n------------------\n");
+		fprintf(stdout,"ESGPHANT Information:\n");
+		fprintf(stdout,"------------------\n");
+		fprintf(stdout,"File Name:\t\t %s\n",input_filename);
+		fprintf(stdout,"Number of Slices:\t %d\n",zSize);
+		fprintf(stdout,"Slice Resolution:\t %d x %d\n",xSize,ySize);
 		
+		fprintf(stdout, "Number of Media:\t %d\n", numberOfMedia);
+		fprintf(stdout, "Media Names:\n");
 		for (int i = 0; i<numberOfMedia; i++)
 		{
-			fprintf(stdout, "%f ", estepe[i]);
+			fprintf(stdout, "\t\t\t%d. %s\n",i+1, mediaNames[i].c_str());
 		}
-		fprintf(stdout, "\n");
-		fprintf(stdout, "%d %d %d\n", xSize, ySize, zSize);
-
-	};	
-}	
+	};
+}

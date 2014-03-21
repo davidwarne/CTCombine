@@ -1,14 +1,15 @@
 #!/bin/make
+# My first Makefile
 
-CC = g++
-#CC = icpc 
+CC = icpc
+#CC = g++ 
 OPTS =  -O2 -ffast-math 
 #OPTS = -g
 #OPTS = -O3
-SRC = Main.cpp EGSPhant.cpp DicomReader.cpp ./DICOMParser/DICOMParser.cxx ./DICOMParser/DICOMFile.cxx ./DICOMParser/DICOMAppHelper.cxx
+SRC = Main.cpp DicomReader.cpp EGSPhant.cpp ./DICOMParser/DICOMParser.cxx ./DICOMParser/DICOMFile.cxx ./DICOMParser/DICOMAppHelper.cxx
 OBJS = $(SRC:.cpp=.o)
 INC = 
-LIBS = 
+LIBS = -lm
 PROFILE = 
 
 .SUFFIXES: .cpp .o
@@ -17,7 +18,7 @@ PROFILE =
 	$(CC) $(OPTS) -c $< -o $@ $(PROFILE)
 
 CTCombine: $(OBJS)
-	$(CC) $(OPTS) $(OBJS) -lm -o CTCombine $(LIBS) $(PROFILE)
+	$(CC) $(OPTS) $(OBJS) -o CTCombine $(LIBS) $(PROFILE)
 	@echo Binary created!!
 
 clean:

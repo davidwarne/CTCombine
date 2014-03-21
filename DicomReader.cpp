@@ -1,8 +1,25 @@
-#include"DicomReader.h"
+/**
+ * DicomReader.cpp (Implementation)
+ *
+ * @Author: Mark Dwyer, David Warne
+ * @Contact: m2.dwyer@qut.edu.au, david.warne@qut.edu.au
+ * @Created: 24/10/2008
+ * @Last Modified: 4/11/2010
+ *
+ * Makes use of the Open Source DicomParser from
+ * sourceforge.net
+ *
+ * NOTE: currently this file is in the process of re-engineering
+ *
+ * Summary:
+ *   Reads DICOM data and contains functions for rotations, translations, and data region selestion
+ */
+ 
+#include "DicomReader.h"
 
 namespace DICOM
 {
-	/****************************
+/****************************
 	 *		Constructors
 	 ***************************/
 
@@ -52,7 +69,6 @@ namespace DICOM
     	new_end_pos = std::unique( data_files.begin(), data_files.end() );
 
 		numSlices = data_files.size();
-		fprintf(stdout, "%d number of slices detected.\n", numSlices);
 	};
 
 	/**
@@ -75,7 +91,7 @@ namespace DICOM
 		helper->Clear();
     	parser->ClearAllDICOMTagCallbacks();
 		
-		sprintf(filename, "%s%s", directory, (char *)data_files[0].c_str());
+		sprintf(filename, "%s/%s", directory, (char *)data_files[0].c_str());
 		
     	parser->OpenFile(filename);
     	helper->RegisterCallbacks(parser);    	
@@ -84,26 +100,25 @@ namespace DICOM
  
 		offset = helper->GetRescaleOffset();
 		slope = helper->GetRescaleSlope();
-		printf("Rescale offset and slope: %f %f \n",offset,slope);
+		//printf("Rescale offset and slope: %f %f \n",offset,slope);
 	 	
 		helper->GetImageData(imgData, dataType, imageDataLength);
 		height = helper->GetHeight();
 		width = helper->GetWidth();
 		spacing = helper->GetPixelSpacing();
 		
-		fprintf(stdout, "Width = %d\n", width);
-		fprintf(stdout, "Height = %d\n", height);
+	//	fprintf(stdout, "Width = %d\n", width);
+	//	fprintf(stdout, "Height = %d\n", height);
 				
 		Orientation = helper->GetOrientation();
 		
-		printf("XY directional Cosines: (%f %f %f), (%f %f %f)\n",Orientation[0],Orientation[1],Orientation[2],Orientation[3],Orientation[4],Orientation[5]);
+		//printf("XY directional Cosines: (%f %f %f), (%f %f %f)\n",Orientation[0],Orientation[1],Orientation[2],Orientation[3],Orientation[4],Orientation[5]);
 		XdirCosine[0] = (float)Orientation[0];
 		XdirCosine[1] = (float)Orientation[1];
 		XdirCosine[2] = (float)Orientation[2];
 		YdirCosine[0] = (float)Orientation[3];
 		YdirCosine[1] = (float)Orientation[4];
 		YdirCosine[2] = (float)Orientation[5];
-		
 		//Data is loaded, now to figure out what type it is 
 		int bit_depth = helper->GetBitsAllocated();
   		int num_comp = helper->GetNumberOfComponents();
@@ -140,7 +155,7 @@ namespace DICOM
 		if (isFloat)
     	{
 			// Data is of type float
-			fprintf(stdout, "DICOM data of type: float\n");
+	//		fprintf(stdout, "DICOM data of type: float\n");
     		imageDataType = 0;
 			data_f = new float**[numSlices]; 
 			for (k=0;k<numSlices;k++)
@@ -155,7 +170,7 @@ namespace DICOM
   		else if (bit_depth <= 8)
     	{
 			// Data is of type unsigned char
-    		fprintf(stdout, "DICOM data of type: unsigned char\n");			
+    //		fprintf(stdout, "DICOM data of type: unsigned char\n");			
 			imageDataType = 1;
 			data_uc = new unsigned char**[numSlices]; 
 			for (k=0;k<numSlices;k++)
@@ -174,7 +189,7 @@ namespace DICOM
     	  	{
 				// Data is of type short
 				imageDataType = 2;
-				fprintf(stdout, "DICOM data of type: short\n");
+		//		fprintf(stdout, "DICOM data of type: short\n");
 				data_s = new short**[numSlices]; 
 			    for (k=0;k<numSlices;k++)
 			    {
@@ -189,7 +204,7 @@ namespace DICOM
     	  	{
 				// Data is of type unsigned short
 				imageDataType = 3;
-				fprintf(stdout, "DICOM data of type: unsigned short\n");
+			//	fprintf(stdout, "DICOM data of type: unsigned short\n");
 				data_us = new unsigned short**[numSlices]; 
 			    for (k=0;k<numSlices;k++)
 			    {
@@ -230,7 +245,8 @@ namespace DICOM
 			{
 				helper->Clear();
 			    parser->ClearAllDICOMTagCallbacks();
-				sprintf(filename, "%s%s", directory, (char *)data_files[k].c_str());
+				sprintf(filename, "%s/%s", directory, (char *)data_files[k].c_str());
+   		//		printf("Reading %s\n",data_files[k].c_str());
    				parser->OpenFile(filename);
    				helper->RegisterCallbacks(parser);
 				helper->RegisterPixelDataCallback(parser);
@@ -240,6 +256,8 @@ namespace DICOM
 
 				xyzStart = helper->GetImagePositionPatient();
 				
+				//printf("%f %f %f\n",xyzStart[0],xyzStart[1],xyzStart[2]);
+
 				iData_s = (short *)imgData;
 				for (j = 0; j<height; j++)
 				{
@@ -308,6 +326,8 @@ namespace DICOM
 
 				xyzStart = helper->GetImagePositionPatient();
 				
+				//printf("%f %f %f\n",xyzStart[0],xyzStart[1],xyzStart[2]);
+
 				iData_f = (float *)imgData;
 				for (j = 0; j<height; j++)
 				{
@@ -361,7 +381,7 @@ namespace DICOM
 		}
 		else if (imageDataType == 1)
 		{
-		    //type was unsigned char
+		     //type was unsigned char
 			for (k = 0; k<numSlices; k++)
 			{
 				helper->Clear();
@@ -502,6 +522,7 @@ namespace DICOM
 		else
 		{
 			fprintf(stdout, "Data type in Dicom not handled.  Not Short, unsigned short, float or unsigned char.");
+			exit(1);
 		}
 
 	};
@@ -632,7 +653,7 @@ namespace DICOM
 		//printf("volume dimensions: %d %d %d",width,height,numSlices);
 		
 		// convert to radians
-		rads = (theta*Pi)/180;
+		rads = (theta*PI)/180;
 
 		// get trig ratios
 		sintheta = sin(rads);
@@ -753,7 +774,7 @@ namespace DICOM
 		FILE *file;
 
 		if(!(file = fopen("DICOMtestFile.txt","w")))
-			printf("Error opening file\n");
+			fprintf(stderr,"ERROR: Could not open file\n");
 
 		fprintf(file,"%d %d %d\n",width,height,numSlices);
 		if ( imageDataType == 2 )
@@ -837,6 +858,18 @@ namespace DICOM
 		int newdimy = (int)round(((ymax-ymin)/(ylims[1]-ylims[0]))*height);
 		int newdimz = (int)round(((zmax-zmin)/(zlims[1]-zlims[0]))*numSlices);
 		
+		if (newdimx >= width){
+			newdimx = width;
+		}
+		
+		if (newdimy >= height){
+			newdimy = height;
+		}
+		
+		if (newdimz >= numSlices){
+			newdimz = numSlices;
+		}
+		//printf("%lf %lf %lf %lf %lf %lf\n",(xmax-xmin),(xlims[1]-xlims[0]),(ymax-ymin),(ylims[1]-ylims[0]),(zmax-zmin),(zlims[1]-zlims[0]));
 		if (imageDataType==2)// short
 		{
 		    short*** new_data_s;
@@ -876,9 +909,9 @@ namespace DICOM
 		            for(i=0; i<width && w<newdimx;i++)
 		            {
 		                // if its in the bounds then add it to the new array
-		                if(xCoords[k][j][i] < xmax && xCoords[k][j][i] > xmin && 
-		                    yCoords[k][j][i] < ymax && yCoords[k][j][i] > ymin &&
-		                    zCoords[k][j][i] < zmax && zCoords[k][j][i] > zmin)
+		                if(xCoords[k][j][i] <= xmax && xCoords[k][j][i] >= xmin && 
+		                    yCoords[k][j][i] <= ymax && yCoords[k][j][i] >= ymin &&
+		                    zCoords[k][j][i] <= zmax && zCoords[k][j][i] >= zmin)
 		                {
 		                    new_data_s[u][v][w] = data_s[k][j][i]; 
 		                    newxCoords[u][v][w] = xCoords[k][j][i];
@@ -928,7 +961,7 @@ namespace DICOM
 		    numSlices = newdimz;
 		    height = newdimy;
 		    width = newdimx;
-		    
+		   // printf("%d %d %d %d %d %d\n",newdimx,newdimy,newdimz,w,v,u);
 		    xlims[0] = xmin;
 		    xlims[1] = xmax;
 		    ylims[0] = ymin;
@@ -977,9 +1010,9 @@ namespace DICOM
 		            for(i=0; i<width && w<newdimx;i++)
 		            {
 		                // if its in the bounds then add it to the new array
-		                if(xCoords[k][j][i] < xmax && xCoords[k][j][i] > xmin && 
-		                    yCoords[k][j][i] < ymax && yCoords[k][j][i] > ymin &&
-		                    zCoords[k][j][i] < zmax && zCoords[k][j][i] > zmin)
+		                if(xCoords[k][j][i] <= xmax && xCoords[k][j][i] >= xmin && 
+		                    yCoords[k][j][i] <= ymax && yCoords[k][j][i] >= ymin &&
+		                    zCoords[k][j][i] <= zmax && zCoords[k][j][i] >= zmin)
 		                {
 		                    new_data_f[u][v][w] = data_f[k][j][i]; 
 		                    newxCoords[u][v][w] = xCoords[k][j][i];
@@ -1078,9 +1111,9 @@ namespace DICOM
 		            for(i=0; i<width && w<newdimx;i++)
 		            {
 		                // if its in the bounds then add it to the new array
-		                if(xCoords[k][j][i] < xmax && xCoords[k][j][i] > xmin && 
-		                    yCoords[k][j][i] < ymax && yCoords[k][j][i] > ymin &&
-		                    zCoords[k][j][i] < zmax && zCoords[k][j][i] > zmin)
+		                if(xCoords[k][j][i] <= xmax && xCoords[k][j][i] >= xmin && 
+		                    yCoords[k][j][i] <= ymax && yCoords[k][j][i] >= ymin &&
+		                    zCoords[k][j][i] <= zmax && zCoords[k][j][i] >= zmin)
 		                {
 		                    new_data_uc[u][v][w] = data_uc[k][j][i]; 
 		                    newxCoords[u][v][w] = xCoords[k][j][i];
@@ -1179,9 +1212,9 @@ namespace DICOM
 		            for(i=0; i<width && w<newdimx;i++)
 		            {
 		                // if its in the bounds then add it to the new array
-		                if(xCoords[k][j][i] < xmax && xCoords[k][j][i] > xmin && 
-		                    yCoords[k][j][i] < ymax && yCoords[k][j][i] > ymin &&
-		                    zCoords[k][j][i] < zmax && zCoords[k][j][i] > zmin)
+		                if(xCoords[k][j][i] <= xmax && xCoords[k][j][i] >= xmin && 
+		                    yCoords[k][j][i] <= ymax && yCoords[k][j][i] >= ymin &&
+		                    zCoords[k][j][i] <= zmax && zCoords[k][j][i] >= zmin)
 		                {
 		                    new_data_us[u][v][w] = data_us[k][j][i]; 
 		                    newxCoords[u][v][w] = xCoords[k][j][i];
@@ -1251,5 +1284,43 @@ namespace DICOM
 		*x = mx;
 		*y = my;
 		*z = mz;
+	};
+	
+	void DICOMReader::PrintInfo()
+	{
+		fprintf(stdout,"\n------------------\n");
+		fprintf(stdout,"DICOM Information:\n");
+		fprintf(stdout,"------------------\n");
+		fprintf(stdout,"\n");
+		fprintf(stdout,"Directory:\t\t %s\n",directory);
+		fprintf(stdout,"Data Format:\t\t ");
+		switch (imageDataType)
+		{
+			case 0:
+				fprintf(stdout,"float\n");
+				break;
+			case 1:
+				fprintf(stdout,"unsigned byte\n");
+				break;
+			case 2:
+				fprintf(stdout,"signed short\n");
+				break;
+			case 3:
+				fprintf(stdout,"unsigned short\n");
+				break;
+		}
+		fprintf(stdout,"Number of Slices:\t %d\n",numSlices);
+		fprintf(stdout,"Slice Resolution:\t %d x %d\n",width,height);
+		fprintf(stdout,"X limits (cm):\t\t %f -> %f\n",xlims[0]*MM2CM,xlims[1]*MM2CM);
+		fprintf(stdout,"Y limits (cm):\t\t %f -> %f\n",ylims[0]*MM2CM,ylims[1]*MM2CM);
+		fprintf(stdout,"Z limits (cm):\t\t %f -> %f\n",zlims[0]*MM2CM,zlims[1]*MM2CM);
+		fprintf(stdout,"Pixel Spacing (cm):\t %f -> %f\n",spacing[0]*MM2CM,spacing[1]*MM2CM);
+		fprintf(stdout,"Offset:\t\t\t %f\n", offset);
+		fprintf(stdout,"Slope:\t\t\t %f\n",slope);
+		fprintf(stdout,"X Directional Cosine:\t (%f, %f, %f)\n",XdirCosine[0],XdirCosine[1],XdirCosine[2]);
+		fprintf(stdout,"Y Directional Cosine:\t (%f, %f, %f)\n",YdirCosine[0],YdirCosine[1],YdirCosine[2]);
+		
+		
+		
 	};
 }

@@ -25,50 +25,95 @@
 using namespace EGS;
 using namespace DICOM;
 
+#define DEFAULT_VOXEL_SIZE 0.5
+#define BUFFER_SIZE 255
 #define AIRDENSE 0.001
-#define VERSION 0.18
+#define VERSION 0.19
 #define HITS_MAX 100
-
-template<class T>
-void byteswap(T* t)
-{
-	std::reverse(reinterpret_cast<char*>(t), reinterpret_cast<char*>(t + 1));
-}
-
 
 /* Globals to storge input argument and file read data
  */
-char dir[255];                          // DICOM data directory
-char INPfile[255];
-float xmin,xmax,ymin,ymax,zmin,zmax;    // require region boundaries of CT data
-float vx,vy,vz=0.5;                     // voxel size 
-float ix,iy,iz = 0;                     // isocentre
-bool flag = 0;
-float Z_gantry[2]= {270,90};            // direction of beam at zero gantry angle
-float theta = 270;                      // rotation angles
-float phi = 90;
-float EPID_dist=0;                      // distance of isocentre to EPID data
+ 
+// DICOM data directory 
+char 			dir[BUFFER_SIZE];
+char			userOverridedir[BUFFER_SIZE];				
+char 			INPfile[BUFFER_SIZE];
 
-char EPIDfileName[255];                 //filename of EPID data
-char outputfileName[255];               //EGSPHANT output filename
+// require region boundaries of CT data
+float 			xmin;
+float 			xmax;
+float 			ymin;
+float 			ymax;
+float			zmin;
+float			zmax;    
 
-float EPIDx,EPIDz;                      //EPID surface dimension
-int totalEPIDLayers;                    // number of EPID dimensions
-int EPIDnumMedia; 
-float** EPIDLayerInfo;                  // EPIDLayerInfo[0] = material number
+// voxel size
+float 			vx = DEFAULT_VOXEL_SIZE;
+float			vy = DEFAULT_VOXEL_SIZE;
+float 			vz = DEFAULT_VOXEL_SIZE;
+
+// isocentre                      
+float 			ix = 0.0;
+float			iy = 0.0;
+float			iz = 0.0;
+
+// true if use supplied an isocentre                     
+bool 			isoflag = 0;
+
+// direction of beam at zero gantry angle
+float 			Z_gantry[2] = {270,90};
+           
+// rotation angles 
+float 			theta = 270;                      
+float 			phi = 90;
+
+// distance of isocentre to EPID data
+float 			EPID_dist = 0;                      
+
+//filename of EPID data	
+char 			EPIDfileName[BUFFER_SIZE];                 
+
+//EGSPHANT output filename
+char 			outputfileName[BUFFER_SIZE];               
+
+//EPID surface dimension
+float 			EPIDx;
+float			EPIDz;
+
+// number of EPID dimensions                      
+int 			totalEPIDLayers;                    
+int 			EPIDnumMedia; 
+float** 		EPIDLayerInfo;          // EPIDLayerInfo[0] = material number
                                         // EPIDLayerInfo[1] = material density
                                         // EPIDLayerInfo[2] = Layer Thickness
-std::string* EPIDMaterials;             // EPID material names
+// EPID material names                                        
+std::string* 	EPIDMaterials;             
+// total materials in CT
+int 			numMedia;
 
-int numMedia;                          // total materials in CT
-std::string* MediaNames;               // names of said materials
-char* mediaCats;                       // category numbers (as ASCII char) of CT materials
-float** conversionData;                // stores the conversion data
-int* numControlPoints;                 // total control points for each density transfer function
-float* estepes;                        // to store the ESTEPEs (whatever they are)
-float*** densityTransfers;             // density transfer functions (one per material)
+// names of said materials                          
+std::string* 	MediaNames;
 
+// category numbers (as ASCII char) of CT materials               
+char* 			mediaCats;                     
 
+// stores the conversion data  
+float** 		conversionData;                
+
+// total control points for each density transfer function
+int* 			numControlPoints;               
+
+// to store the ESTEPEs (whatever they are)  
+float* 			estepes;                      
+
+// density transfer functions (one per material)  
+float*** 		densityTransfers;             
+
+bool 			EPIDinit = false;
+bool 			OUTinit = false;
+bool 			INPinit = false;
+bool 			overrideDIR = false;
+bool 			cropped = false;
 /*
  * COMBINE_EGSPHANT: Combine the CT with the EPID data, is probably redundant now we create 
  *                   EPID data on conversion From Dicom
@@ -300,7 +345,8 @@ void Combine_EGSPHANT(const char *ct_filename, const char *epid_filename, const 
 * Pre-Condition: for the conversion to work is that the coordinates have already been
 *       translated such that the iso-centre is now the origin
 */
-void ConvertDICOMToEGSPhant(DICOMReader* Dicom,EGSPhant* EGS){
+void ConvertDICOMToEGSPhant(DICOMReader* Dicom,EGSPhant* EGS)
+{
 
 	
 	float rescale = 0.1;         //DICOM data coords are in mm and EGSPhant is in cm
@@ -345,9 +391,6 @@ void ConvertDICOMToEGSPhant(DICOMReader* Dicom,EGSPhant* EGS){
 	EGS->zSize = (int)round(EPIDz/vz); // z dimesion of EPID
   
  	// print out some grid stats
-	printf("Original Volume Dimensions: %d %d %d\n",Dicom->width,Dicom->height,Dicom->numSlices);
-	printf("Voxel Dimesions %f %f %f\n",vx,vy,vz);
-	printf("Voxelised Grid Dimensions with EPID: %d %d %d\n",EGS->xSize,EGS->ySize,EGS->zSize);
     xR = EGS->xSize/vx;
     yR = EGS->ySize/vy;
     zR = EGS->zSize/vz;
@@ -634,7 +677,7 @@ void ConvertDICOMToEGSPhant(DICOMReader* Dicom,EGSPhant* EGS){
 	EGS->RemoveCushion(mediaCats[1],mediaCats[0],mediaCats[1]);
 	
 	// debug stuff
-	FILE* file = fopen("HITS.txt","w");
+/*	FILE* file = fopen("HITS.txt","w");
 	for (k=0;k<EGS->zSize;k++){
 	    for (j=0;j<EGS->ySize;j++){
 	        for (i=0; i<EGS->xSize;i++){
@@ -643,7 +686,7 @@ void ConvertDICOMToEGSPhant(DICOMReader* Dicom,EGSPhant* EGS){
 	        fprintf(file,"\n");
 	     }
 	     fprintf(file,"\n");
-	 }       
+	 }*/       
 }
 
 /* READEPIDSPEC: Reader for the EPID info file used to generate EPID Layers in ConvertDICOMtoEGSPhant()
@@ -659,21 +702,21 @@ int ReadEPIDspec(const char* filename){
 
 	// check we can access the file to write
 	if(!(file = fopen(filename,"r"))){
-		printf("ERROR: could not open EPID data file\n");
+		fprintf(stderr,"ERROR: could not open EPID data file\n");
 		return 1;
 	}
 
 	// read the x and z dimensions
 	if(!(fscanf(file,"%f %f\n",&EPIDx,&EPIDz)==2))
 	{
-		printf("ERROR: could not read EPID xz dimensions\n");
+		fprintf(stderr,"ERROR: could not read EPID xz dimensions\n");
 		return 1;
 	}
 
 	// read number of materials in this file
 	if(!(fscanf(file,"%d\n",&EPIDnumMedia)==1))
 	{
-		printf("ERROR: could not read EPID Material Number\n");
+		fprintf(stderr,"ERROR: could not read EPID Material Number\n");
 		return 1;
 	}
 
@@ -685,7 +728,7 @@ int ReadEPIDspec(const char* filename){
 	{
 		if(!(fscanf(file,"%s",tempName)==1))
 		{
-			printf("ERROR: could not read Material %d\n",i);
+			fprintf(stderr,"ERROR: could not read Material %d\n",i);
 			return 1;
 		}
 
@@ -695,7 +738,7 @@ int ReadEPIDspec(const char* filename){
 	// read the number of EPID Layers
 	if(!(fscanf(file,"%d\n",&totalEPIDLayers)==1))
 	{
-		printf("ERROR: could not read number of Layers\n");
+		fprintf(stderr,"ERROR: could not read number of Layers\n");
 		return 1;
 	}
 
@@ -712,7 +755,7 @@ int ReadEPIDspec(const char* filename){
 	{
 		if(!(fscanf(file,"%f %f %f",&(EPIDLayerInfo[i][0]),&(EPIDLayerInfo[i][1]),&(EPIDLayerInfo[i][2]))==3))
 		{
-			printf("ERROR: could not read layer info for layer %d",i);
+			fprintf(stderr,"ERROR: could not read layer info for layer %d",i);
 			return 1;
 		}
 	}
@@ -736,35 +779,35 @@ int ReadINP(const char* filename)
 	// check we can open the file
 	if(!(file = fopen(filename,"r")))
 	{
-		printf("ERROR: could not open .inp data file\n");
+		fprintf(stderr,"ERROR: could not open .inp data file\n");
 		return 1;
 	}
 	
 	//skip the first two lines
 	if(!(fscanf(file,"%s\n",temp)==1))
 	{
-		printf("ERROR: could not read data format\n");
+		fprintf(stderr,"ERROR: could not read data format\n");
 		return 1;
 	}
 
 	// check the data format
 	if(strcmp(temp,"DICOM"))
 	{
-		printf("ERROR: Only DICOM data is supported by CTCombine %f\n",VERSION);
+		fprintf(stderr,"ERROR: Only DICOM data is supported by CTCombine %f\n",VERSION);
 		return 1;
 	}
 
 	//read DICOM directory
 	if(!(fscanf(file,"%s\n",dir)==1))
 	{
-		printf("ERROR: could not read DICOM directory\n");
+		fprintf(stderr,"ERROR: could not read DICOM directory\n");
 		return 1;
 	}
 
 	// read data volume bounds
 	if(!(fscanf(file,"%f, %f, %f, %f, %f, %f\n",&xmin,&xmax,&ymin,&ymax,&zmin,&zmax)==6))
 	{
-		printf("ERROR: could not read data boundaries\n");
+		fprintf(stderr,"ERROR: could not read data boundaries\n");
 		return 1;
 	}
 
@@ -791,14 +834,14 @@ int ReadINP(const char* filename)
 	// read voxel dimensions
 	if(!(fscanf(file,"%f, %f, %f\n",&vx,&vy,&vz)==3))
 	{
-		printf("ERROR: could not read voxel dimensions\n");
+		fprintf(stderr,"ERROR: could not read voxel dimensions\n");
 		return 1;
 	}
 
 	// read number of media
 	if(!(fscanf(file,"%d\n",&numMedia)==1))
 	{
-		printf("ERROR: could not read number of Materials in CT\n");
+		fprintf(stderr,"ERROR: could not read number of Materials in CT\n");
 		return 1;
 	}
 
@@ -809,12 +852,12 @@ int ReadINP(const char* filename)
 	{
 		if(!(fscanf(file,"%d ",&(numControlPoints[i]))==1))
 		{
-			printf("ERROR: could not read control point values\n");
+			fprintf(stderr,"ERROR: could not read control point values\n");
 			return 1;
 		}
-		printf("control points for %d: %d\n",i+1,numControlPoints[i]);
+	
 	}
-	fscanf(file,"\n");
+	fscanf(file,"\n",temp);
 
 	// intialise the Material Name,Category, and conversion data arrays
 	MediaNames = new std::string[numMedia];
@@ -838,12 +881,12 @@ int ReadINP(const char* filename)
 		// read the media name 
 		if (!(fscanf(file,"%s",temp)==1))
 		{
-			printf("ERROR: could not read Material name %d\n",i);
+			fprintf(stderr,"ERROR: could not read Material name %d\n",i);
 			return 1;
 		}
 
 		MediaNames[i] = temp;
-		printf("Media name: %s\n",MediaNames[i].c_str());
+		
 
 		//assign a category number
 		sprintf(s,"%d",i+1);
@@ -853,18 +896,44 @@ int ReadINP(const char* filename)
 		{
 			if (!(fscanf(file,"%f,%f,",&(densityTransfers[i][j][0]),&(densityTransfers[i][j][1]))==2))
 			{
-				printf("ERROR: Could not read transfer function for material %d\n",i+1);
+				fprintf(stderr,"ERROR: Could not read transfer function for material %d\n",i+1);
 				return 1;
 			}
-			printf("%f %f\n",densityTransfers[i][j][0],densityTransfers[i][j][1]);
+			
 		}
 		//read the estepe
 		if(!(fscanf(file,"%f\n",&(estepes[i]))==1))
 		{
-			printf("ERROR: Could not read ESTEPE for material %d\n",i);
+			fprintf(stderr,"ERROR: Could not read ESTEPE for material %d\n",i);
 			return 1;
 		}
-		printf("estep: %f\n",estepes[i]);
+		
+	}
+	
+	
+	//print materials
+	printf("Media total %d: \n",numMedia);
+	printf("---------------\n");
+	for(i=0;i<numMedia;i++)
+	{
+		printf("Media Name:\t %s\n",MediaNames[i].c_str());
+		printf("Media Code:\t %d\n",i+1);
+		printf("Estepe:\t\t %f\n",estepes[i]);
+		printf("CT -> Density Transfer Function:\n");
+		printf("--------------------------------\n");
+		printf("CT\t| ");
+		for (j=0;j<numControlPoints[i];j++)
+		{
+			printf("%d\t\t | ",(int)densityTransfers[i][j][0]);	
+		}
+		printf("\n");
+		printf("Density\t| ");
+		for (j=0;j<numControlPoints[i];j++)
+		{
+			printf("%f\t | ",densityTransfers[i][j][1]);	
+		}
+		printf("\n\n");
+		
 	}
 
 	return 0;
@@ -875,8 +944,7 @@ int ReadINP(const char* filename)
 int printHelp(){
 	printf("CTCombine: version %f\n",VERSION);
 	printf("\n");
-	printf("The Following switches are used to incicate the data being input.\n");
-	printf("all of the following parameters are required:\n");
+	printf("The following parameters are required:\n");
 	printf("\n");
 	printf("-E filename              the following parameter is the name of the EPID spec file\n");
 	printf("-o outfile               the following parameter is the name of the output.egsphant file\n");
@@ -889,7 +957,9 @@ int printHelp(){
 	printf("-e dist                  indicates the desired distance from the isocentre to the top of the EPID\n");
 	printf("-g theta phi             indicates the theta and phi angle of zero gantry angle\n");
 	printf("-r theta phi             indicates the theta and phi angle of desired gantry angle\n");
-	printf("-c file1 file2 file3     Combines the following two files (file1,file2) into the one output file indicayed by file3");
+	printf("-c file1 file2 file3     Combines the following two files (file1,file2) into the one output file indicated by file3\n");
+	printf("-h                       Prints this options list\n");
+	printf("-v                       Prints Version Number\n");
 }
 
 /* READARGS: Reads the commandline arguments passed to CTCombine
@@ -898,10 +968,7 @@ int ReadArgs(int argc, char* argv[]){
 
 	int i;
 	int temp;
-	bool EPIDinit=0;
-	bool OUTinit=0;
-	bool INPinit=0;
-	bool overrideDIR=0;
+	
 
 
 	// check there are some parameters
@@ -912,17 +979,12 @@ int ReadArgs(int argc, char* argv[]){
 		{
 			if(!strcmp(argv[i],"-d"))
 			{
-				sprintf(dir,"%s",argv[++i]);
-				temp = i;
+				sprintf(userOverridedir,"%s",argv[++i]);
 				overrideDIR = 1;
 			}
 			else if (!strcmp(argv[i],"-inp"))//indicates INP input data file
 			{
-				if(ReadINP(argv[++i]))// testing new reader
-				{
-					printf("ERROR: Bad read of file %s\n",argv[i]);
-					return 1;
-				}
+				sprintf(INPfile,"%s",argv[++i]);
 				INPinit = 1;
 			}
 			else if (!strcmp(argv[i],"-i"))//indicates isocentre
@@ -931,11 +993,11 @@ int ReadArgs(int argc, char* argv[]){
 				iy = atof(argv[++i]);
 				iz = atof(argv[++i]);
 
-				flag = 1;
+				isoflag = 1;
 			}
 			else if (!strcmp(argv[i],"-g"))//indicates direction of zero gantry angle
 			{
-				Z_gantchry[0] = atof(argv[++i]);//theta angle
+				Z_gantry[0] = atof(argv[++i]);//theta angle
 				Z_gantry[1] = atof(argv[++i]);//phi angle
 			}
 			else if (!strcmp(argv[i],"-r")) //indicates theta and phi rotation angles
@@ -950,15 +1012,11 @@ int ReadArgs(int argc, char* argv[]){
 			else if (!strcmp(argv[i],"-c")) //indicates CT number to density convesion data
 			{
 				Combine_EGSPHANT(argv[i+1],argv[i+2],argv[i+3]);
-				return 0;
+				exit(0);
 			}
 			else if (!strcmp(argv[i],"-E")) //indicates EPID data file
 			{
-				if(ReadEPIDspec(argv[++i]))
-				{
-					printf("ERROR: Bad read of file %s",argv[i]);
-					return 1;
-				}
+				sprintf(EPIDfileName,"%s",argv[++i]);
 				EPIDinit = 1;
 			}
 			else if (!strcmp(argv[i],"-o")) //indicates outputfile name
@@ -966,36 +1024,65 @@ int ReadArgs(int argc, char* argv[]){
 				sprintf(outputfileName,"%s",argv[++i]);
 				OUTinit = 1;
 			}
-			else
+			else if (!strcmp(argv[i],"-h"))
 			{
 				printHelp();
+				exit(0);
+			}
+			else if (!strcmp(argv[i],"-v"))
+			{
+				printf("CTCombine: version %f\n",VERSION);
+				printf("Authors:\n");
+				printf("\t Mark Dwyer,\t (m2.dwyer@qut.edu.au)\n");
+				printf("\t David Warne,\t (david.warne@qut.edu.au)\n");
+				printf("\n");
+				printf("HPC and Research Support, Queensland University of Technology\n");
+				exit(0);
+			}
+			else
+			{
+
 				return 1;
 			}
 		}
 	}
 	else
 	{
-		printHelp();
+
 		return 1;
 	}
-
-	// check the require arguments have been included
-	if (EPIDinit && OUTinit && INPinit)
-	{
-		// check if the user used the -d switch
-		if (overrideDIR)
-		{
-			sprintf(dir,"%s",argv[temp]);
-		}
-		return 0;
-	}
-	else
-	{
-		printf("ERROR: one of the required files is not specified\n");
-		printHelp();
-	}
+	return 0;
 }
 
+void printHeading()
+{
+	printf("+-------------------------------------------------------------+\n");
+	printf("||                      CTCombine                            ||\n");
+	printf("+-------------------------------------------------------------+\n\n");
+}
+
+void PrintRotationData()
+{
+	printf("\n---------------------\n");
+	printf("Rotation Information:\n");
+	printf("---------------------\n");
+	printf("Zero Gantry Angles:\t %f %f\n",Z_gantry[0],Z_gantry[1]);
+	printf("Rotation Angle:\t\t %f %f\n",theta,phi);
+	printf("Isocentre:\t\t (%f, %f, %f) ",ix,iy,iz);
+	if(!isoflag)
+		printf("(Centre of volume used)\n");
+	else
+		printf("(User Supplied)\n");
+	printf("Selected Region (cm): ");
+	if (cropped)
+		printf("(Region was cropped to fit EPID size)\n");
+	else
+		printf("\n");
+	printf("\t\t\tX %f -> %f\n",xmin,xmax);
+	printf("\t\t\tY %f -> %f\n",ymin,ymax);
+	printf("\t\t\tZ %f -> %f\n",zmin,zmax);
+	
+}
 
 int main(int argc, char* argv[])
 {
@@ -1004,42 +1091,75 @@ int main(int argc, char* argv[])
 	float zaxis[3] = {0,0,1}; // axis of rotation for theta
 	float xaxis[3] = {1,0,0}; // axis of rotation for phi
 	
+	
 	// read commandline arguments
 	if(ReadArgs(argc,argv))
 	{
-		printf("Program cannot complete due to invalid input\n");
-		return 1;
+		printf("Usage: CTCombine -E EPIDdatafile -inp .inpInputFile -o outputfile [-g theta0 phi0] [-r theta phi] [-d dir] [-i x y z] [-e EPIDdist]");
+		printf(" use -h for help.\n");
+		exit(1);
 	}
 	else
 	{
-		// read the DICOM data
-		printf("\nDICOM Directory: %s\n",dir);
-		DICOMReader DICOM(dir); //initialise the DICOM reader
-		printf("Reading DICOM data...\n");
-		DICOM.ReadSample();
-		DICOM.ReadAll();
+		printHeading();
 		
-		printf("Read Complete...\n");
-		//return 0;
-
-		// if no isocentre specified then get the mid point
-		if(!flag) 
+		
+		if(ReadINP(INPfile))// testing new reader
 		{
-		    printf("\nNo User Suppied Isocentre...");
-		    printf("Calculating...\n");
-			DICOM.GetMidPoint(&ix,&iy,&iz);
-			ix /= scaleFactor;
-			iy /= scaleFactor;
-			iz /= scaleFactor;
-			printf("Calculated Isocentre is (%f %f %f)\n", ix,iy,iz);
+			fprintf(stderr,"ERROR: Bad read of file %s\n",argv[i]);
+			exit(1);
+		}
+		
+		if(ReadEPIDspec(EPIDfileName))
+		{
+			fprintf(stderr,"ERROR: Bad read of file %s",argv[i]);
+			exit(1);
+		}
+		
+		// check if the user used the -d switch
+		if (overrideDIR)
+		{
+			sprintf(dir,"%s",userOverridedir);
+		}
+		
+		// check the require arguments have been included
+		if (!(EPIDinit && OUTinit && INPinit))
+		{
+			fprintf(stderr,"ERROR: one of the required files is not specified\n");
+			exit(1);
+		}
+				
+		printf("+---- Reading DICOM data ----+\n\n");
+		// read the DICOM data
+		DICOMReader DICOM(dir); //initialise the DICOM reader
+		printf("Scanning %s for .dcm files.\n\n",dir);
+		if(DICOM.numSlices <= 0)
+		{
+			fprintf(stderr,"ERROR: Problem reading Dicom stack... no slices found\n");
+			exit(1);
 		}
 		else
 		{
-		    printf("User Supplied Isocentre is (%f %f %f).\n",ix,iy,iz);
+			printf("Detected %d Slices...\n",DICOM.numSlices);
 		}
+		DICOM.ReadSample();
+		DICOM.ReadAll();
+		printf("+---- Read Complete ---+\n\n");
+		
+		DICOM.PrintInfo();
+		
+		// if no isocentre specified then get the mid point
+		if(!isoflag) 
+		{
+		    DICOM.GetMidPoint(&ix,&iy,&iz);
+			ix /= scaleFactor;
+			iy /= scaleFactor;
+			iz /= scaleFactor;
+		}
+		
 		// Select from the rotated data the desired data region
-		printf("\nSetting bounds...\n");
-		printf("Oringinal bounds were (%f, %f),(%f, %f),(%f, %f)\n",DICOM.xlims[0],DICOM.xlims[1],DICOM.ylims[0],DICOM.ylims[1],DICOM.zlims[0],DICOM.zlims[1]);
+		//printf("\nSetting bounds...\n");
+		//printf("Oringinal bounds were (%f, %f),(%f, %f),(%f, %f)\n",DICOM.xlims[0],DICOM.xlims[1],DICOM.ylims[0],DICOM.ylims[1],DICOM.zlims[0],DICOM.zlims[1]);
 		
 		//Case 1: bounds within EPID Dimension
 		if(xmax - xmin <= EPIDx && zmax - zmin <= EPIDz)
@@ -1047,14 +1167,12 @@ int main(int argc, char* argv[])
 		    if(DICOM.Select_Region(xmin*scaleFactor,xmax*scaleFactor,ymin*scaleFactor,ymax*scaleFactor,zmin*scaleFactor,zmax*scaleFactor))
 		    {
 			    printf("Could not complete operation exiting...\n");
-			    return 1;
+			    exit(1);
 		    }
-		    printf("Selected region Was (%f, %f), (%f, %f), (%f, %f)\n",xmin,xmax,ymin,ymax,zmin,zmax);
 		}
 		else //Case 2: we need to crop the data volume
 		{
-		    printf("Selected region exceeds EPID dimensions... cropping...\n");
-		    
+		    cropped = true;
 		    while(xmax - xmin > EPIDx)
 		    {
 		        xmax--;
@@ -1064,39 +1182,43 @@ int main(int argc, char* argv[])
 		    while(zmax - zmin > EPIDz)
 		    {
 		        zmax--;
-		        zmax++;
+		        zmin++;
 		    }
 		    
-		     if(DICOM.Select_Region(xmin*scaleFactor,xmax*scaleFactor,ymin*scaleFactor,ymax*scaleFactor,zmin*scaleFactor,zmax*scaleFactor))
+		    if(DICOM.Select_Region(xmin*scaleFactor,xmax*scaleFactor,ymin*scaleFactor,ymax*scaleFactor,zmin*scaleFactor,zmax*scaleFactor))
 		    {
 			    printf("Could not complete operation exiting...\n");
-			    return 1;
+			    exit(1);
 		    }
-		    printf("Selected region Was (%f, %f), (%f, %f), (%f, %f)\n",xmin,xmax,ymin,ymax,zmin,zmax);
 		}
+		
+		PrintRotationData();
 			
 		//make rotation from zero gantry angle to the new gantry angle 
-		printf("\nRotating To new granty angle...\n");
+		printf("\nRotating To new gantry angle...");
 		DICOM.Rotate3D(-Z_gantry[0] + theta,zaxis,ix*scaleFactor,iy*scaleFactor,iz*scaleFactor);
 		DICOM.Rotate3D(-Z_gantry[1] + phi,xaxis,ix*scaleFactor,iy*scaleFactor,iz*scaleFactor);
-		printf("Rotation Complete...\n");
-		
-		printf("\nTranslating to isocentre (%f, %f, %f)...\n",ix,iy,iz);
 		DICOM.Translate(ix*scaleFactor,iy*scaleFactor,iz*scaleFactor);
+		printf("done.\n");
 		
-		printf("\nConverting to .egsphant...\n");
+		//printf("\nTranslating to isocentre (%f, %f, %f)...\n",ix,iy,iz);
+		
+		
+		printf("\nConverting to .egsphant...");
 		//  now initailise EGSPhant object to store converted data
 		EGSPhant EGSct(outputfileName);
 		// convert
 		ConvertDICOMToEGSPhant(&DICOM,&EGSct);
-		printf("data converted...\n");
-
-		printf("Re-defining coordinates for work with Dosxyz...\n");
 		EGSct.ShiftToOrigin(0,-100,0);
+		printf("done.\n");
+
+		EGSct.PrintStats();
 		
-		printf("\nWriting EGS file...\n");
+		printf("\nWriting EGS file %s...",outputfileName);
 		// hmm... what does the next line do? Oh yes, thats right... we write to a file
 		EGSct.Write();
+		printf("done.\n");
+		fprintf(stdout, "%s successfully generated.\n", outputfileName);
 	}
 
 	return 0;
