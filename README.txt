@@ -5,6 +5,9 @@
   Voxelises data and appends EPID data to the file.
 
   Features:
+    
+    Version 0.15 -
+       - Y axis now shifted such that y<100 is above the isocentre and y>100 is below
 
     Version 0.14 -
        - volume extended laterally to fully include the EPID

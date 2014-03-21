@@ -782,11 +782,11 @@ namespace EGS
 
 		int i;
 
-		if(!flag)//calculate isocentre
+		if(!flag)//no translation
 		{
-			x = xBoundaries[0] +(xBoundaries[0] - xBoundaries[xSize])*0.5;
-			y = yBoundaries[0] +(yBoundaries[0] - yBoundaries[ySize])*0.5;
-			z = 0;
+			x=0;
+			y=0;
+			z=0;
 		}
 		//point is to be our new origin
 		for(i=0;i<=xSize;i++)

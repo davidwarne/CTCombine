@@ -26,7 +26,7 @@ using namespace EGS;
 using namespace DICOM;
 
 #define AIRDENSE 0.001
-#define VERSION 0.14
+#define VERSION 0.13
 
 template<class T>
 void byteswap(T* t)
@@ -464,7 +464,7 @@ void ConvertDICOMToEGSPhant(DICOMReader* Dicom,EGSPhant* EGS){
 					// use the voxel indecies to map to the indices of the surrounding DICOM grid points 
 					lr = (float)((i-xdataStart+(w & 1)))*dx;
 					ls = (float)((j+((w & 2)>>1)))*dy;
-					lt = (float)((k+((w & 4)>>2)))*dz;
+					lt = (float)((k-zdataStart+((w & 4)>>2)))*dz;
 					idx = (int)floor(lr);
 					idy = (int)floor(ls);
 					idz = (int)floor(lt);
@@ -642,7 +642,7 @@ void ConvertDICOMToEGSPhant(DICOMReader* Dicom,EGSPhant* EGS){
 	}
 	for (j=0;j<=EGS->ySize;j++)
 	{
-		EGS->yBoundaries[j] = Dicom->yCoords[0]*rescale + j*vy;
+		EGS->yBoundaries[j] = Dicom->yCoords[0]*rescale - j*vy;
 	}
 
 	for (k=0;k<=EGS->zSize;k++)
@@ -1020,6 +1020,7 @@ int main(int argc, char* argv[])
 		EGSct.ShiftToOrigin(ix,iy,iz,flag);
 		printf("Flipping y axis...\n");
 		EGSct.FlipY();
+		EGSct.ShiftToOrigin(0,-100,0,true);
 		printf("Writing EGS file...\n");
 		// hmm... what does the next line do? Oh yes, thats right... we write to a file
 		EGSct.Write();
