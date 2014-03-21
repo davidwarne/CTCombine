@@ -46,7 +46,8 @@ namespace EGS
 			int Read(void);
 			int Write(void);
 			int WriteRotatedData(const char* outfilename,float*** voxelMediumRotated,float*** voxelDensityRotated); // just an overload for quicker output
-			int ShiftToOrigin(float x,float y,float z);
+			int ShiftToOrigin(float x,float y,float z,int flag);
+			void FlipY();
 			int WriteInteger(FILE *file, int num, int length);
 			int RotateAboutZaxis(float theta);
 			int Rotate3D(float theta, float* axis);
@@ -777,18 +778,35 @@ namespace EGS
 	/*
 	* shifts the grid from by -(x,y,z)
 	*/
-	int EGSPhant::ShiftToOrigin(float x,float y,float z){
+	int EGSPhant::ShiftToOrigin(float x,float y,float z,int flag){
 
 		int i;
+
+		if(!flag)//calculate isocentre
+		{
+			x = xBoundaries[0] +(xBoundaries[0] - xBoundaries[xSize])*0.5;
+			y = yBoundaries[0] +(yBoundaries[0] - yBoundaries[ySize])*0.5;
+			z = 0;
+		}
 		//point is to be our new origin
-		for(i=0;i<xSize;i++)
+		for(i=0;i<=xSize;i++)
 			xBoundaries[i] -= x;
-		for(i=0;i<ySize;i++)
+		for(i=0;i<=ySize;i++)
 			yBoundaries[i] -= y;
-		for(i=0;i<zSize;i++)
+		for(i=0;i<=zSize;i++)
 			zBoundaries[i] -= z;
 		
 	}
+
+	void EGSPhant::FlipY(){
+
+		int i;
+
+		for (i=0;i<=ySize;i++)
+		{
+			yBoundaries[i] = -yBoundaries[i];
+		}
+	};
 
 	
 

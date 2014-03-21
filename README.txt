@@ -5,6 +5,10 @@
   Voxelises data and appends EPID data to the file.
 
   Features:
+
+    Version 0.13 -
+        - Input validation has been implemented
+        - some minor bug fixes 
      
     From Version 0.12 -
         -Reads DICOM data, and converts to .egsphant using voxel sizes and coordinate limts specified in .inp file
@@ -69,24 +73,27 @@
    
 To Rotate about a the isocentre to align with a given gantry angle:
 
-        CTCombine -d DicomDataDirectory [-g zeroGantry] [-r desiredGantry] -E EPIDdatafile -inp .inpInputFile -o outputfile
+        CTCombine [-g zeroGantry] [-r desiredGantry] -E EPIDdatafile -inp .inpInputFile -o outputfile
 
    example:
-        CTCombine -d ./Data/cthead/ -g 270 90 -r 300 90 -E ./EPIDexample.txt -inp ./cthead.inp -o ./cthead.egsphant
+        CTCombine -g 270 90 -r 300 90 -E ./EPIDexample.txt -inp ./cthead.inp -o ./cthead.egsphant
 
-Other options:
+NOTE: the zero gantry will be theta=270 phi=90 by default. The following example will simply convert from 
+DICOM to .egsphant and include the EPID: 
+   example:
+        CTCombine -E ./EPIDexample.txt -inp ./cthead.inp -o ./cthead.egsphant
+
+Other options (these are all optional):
+
+-d dir            Overrides directory stated in .inp file for DICOM data reading
+example:          CTCombine -d ./Data/cthead/ -E ./EPIDexample.txt -inp ./cthead.inp -o ./cthead.egsphant
 
 -i x y z          translates volume to this point to create a new isocentre, any rotation is done about this point
-
-    example:
-         CTCombine -d ./Data/cthead/ -i 0.053 -22.2 0 -g 270 90 -r 300 90 -E ./EPIDexample.txt -inp ./cthead.inp -o ./cthead.egsphant      
+example:          CTCombine -i 0.053 -22.2 0 -g 270 90 -r 300 90 -E ./EPIDexample.txt -inp ./cthead.inp -o ./cthead.egsphant      
     
 -e dist           specifies the distance (in cm) that the surface of the EPID is to be from the isocentre
-         
-    example:
-         CTCombine -d ./Data/cthead/ -e 59.4 -E ./EPIDexample.txt -inp ./cthead.inp -o ./cthead.egsphant
-    or
-          CTCombine -e 59.4 -c ./cthead.egsphant ./EPID.egsphant ./cthead_and_EPID.egsphant
+example:          CTCombine -e 59.4 -E ./EPIDexample.txt -inp ./cthead.inp -o ./cthead.egsphant
+     or           CTCombine -e 59.4 -c ./cthead.egsphant ./EPID.egsphant ./cthead_and_EPID.egsphant
 
 # File Format Description
 #-------------------------
@@ -112,6 +119,25 @@ materialNumberN materialdensityN thicknessN
 
 - for an example see the EPIDexample.txt file
 
-INP file (you already know this...): see cthead.inp 
+INP file (you already know this...): 
 
-NOTE: unexpected behaviour may arise from setting bounds that exceed the data bounds themselves
+DataType                                                     // only DICOM is handled
+directory                                                    // the folder containing the data files
+xMin, xMax, yMin, yMax, zMin, zMax                           // boundaries of selected data region
+xVoxeldimension, yVoxeldimension,zVoxeldimension             //size of Voxel Dimensions in cm
+numberOfMaterials                                            // Count of Materials in CT
+materialName1                                                // material and conversion data
+CTUpperBound1,DensityLowerBound1,DensityUpperBound1, estepe1
+materialName2                                                
+CTUpperBound2,DensityLowerBound2,DensityUpperBound2, estepe2
+.
+.
+.
+materialNameN                                                
+CTUpperBoundN,DensityLowerBoundN,DensityUpperBoundN, estepeN
+
+
+# Known Issues
+#-----------------
+
+ 1. At the moment only DICOM data of type Short is supported

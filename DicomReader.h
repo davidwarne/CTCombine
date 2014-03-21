@@ -1,13 +1,16 @@
 /**
  * DicomReader.h (Definition)
  *
- * @Author Mark Dwyer
- * @Contact m2.dwyer@qut.edu.au
- * @Created 24/10/2008
+ * @Author: Mark Dwyer, David Warne
+ * @Contact: m2.dwyer@qut.edu.au, david.warne@qut.edu.au
+ * @Created: 24/10/2008
+ * @Last Modified: 16/02/2009
  *
  * Makes use of the Open Source DicomParser from
  * sourceforge.net
  *
+ * Summary:
+ *   Reads DICOM data and contains functions for rotations, translations, and data region selestion
  */
 #include "./DICOMParser/DICOMParser.h"
 #include "./DICOMParser/DICOMFile.h"
@@ -50,10 +53,10 @@ namespace DICOM
 
 			void OutputSliceToFile(int slice,char* outFileName);
 			void FastRotate(float angle, int slice);
-			void Rotate3D(float theta, float* axis,float ox,float oy,float oz);
+			void Rotate3D(float theta, float* axis,float ox,float oy,float oz,bool flag);
 			void FlipAxis(float* axis, int length1);
-			void Translate(float x, float y, float z);
-			void Select_Region(float xmin,float xmax,float ymin, float ymax, float zmin, float zmax);
+			void Translate(float x, float y, float z,bool flag);
+			int Select_Region(float xmin,float xmax,float ymin, float ymax, float zmin, float zmax);
 			void WriteTestFile();
 
 		public:
@@ -154,7 +157,7 @@ namespace DICOM
 		
 		char filename[255];
 		sprintf(filename, "%s%s", directory, (char *)data_files[0].c_str());
-		//fprintf(stdout, "%s\n", filename);
+		
     	parser->OpenFile(filename);
     	helper->RegisterCallbacks(parser);
 
@@ -308,10 +311,7 @@ namespace DICOM
 						else{
 							data_s[k][j][i]=0;
 						}
-						xCoords[i] = xyzStart[0] + i*spacing[0];
-
-						//printf("x,y,z = %f %f %f\n",xCoords[i],yCoords[j],zCoords[k]);
-						
+						xCoords[i] = xyzStart[0] + i*spacing[0];		
 					}
 					
 				}
@@ -334,7 +334,7 @@ namespace DICOM
 				helper->GetImageData(imgData, dataType, imageDataLength);
 				xyzStart = helper->GetImagePositionPatient();
 				zCoords[k] = xyzStart[2];
-				//printf("Start xyz = %f %f %f\n",xyzStart[0],xyzStart[1],xyzStart[2]);
+				
 				// unsigned char
 				iData_uc = (unsigned char *)imgData;
 				for (j = 0; j<height; j++)
@@ -349,9 +349,6 @@ namespace DICOM
 							data_uc[k][j][i]=0;
 						}
 						xCoords[i] = xyzStart[0] + i*spacing[0];
-
-						//printf("x,y,z = %f %f %f\n",xCoords[i],yCoords[j],zCoords[k]);
-						
 					}
 					
 				}
@@ -374,7 +371,6 @@ namespace DICOM
 				xyzStart = helper->GetImagePositionPatient();
 
 				zCoords[k] = xyzStart[2];
-				//printf("Start xyz = %f %f %f\n",xyzStart[0],xyzStart[1],xyzStart[2]);
 
 				iData_us = (unsigned short *)imgData;
 				for (j = 0; j<height; j++)
@@ -389,9 +385,6 @@ namespace DICOM
 							data_us[k][j][i]=0;
 						}
 						xCoords[i] = xyzStart[0] + i*spacing[0];
-
-						//printf("x,y,z = %f %f %f\n",xCoords[i],yCoords[j],zCoords[k]);
-						
 					}
 					
 				}
@@ -414,7 +407,7 @@ namespace DICOM
 				xyzStart = helper->GetImagePositionPatient();
 
 				zCoords[k] = xyzStart[2];
-				//printf("Start xyz = %f %f %f\n",xyzStart[0],xyzStart[1],xyzStart[2]);
+				
 
 				iData_f = (float *)imgData;
 				for (j = 0; j<height; j++)
@@ -429,9 +422,6 @@ namespace DICOM
 							data_f[k][j][i]=0;
 						}
 						xCoords[i] = xyzStart[0] + i*spacing[0];
-
-						//printf("x,y,z = %f %f %f\n",xCoords[i],yCoords[j],zCoords[k]);
-						
 					}
 					
 				}
@@ -486,6 +476,11 @@ namespace DICOM
 		}
 	};
 
+	/**
+	 * Writes a selected slice to file
+	 * 
+	 * Used for testing 2D rotation before extending to 3D
+	 */
 	void DICOMReader::OutputSliceToFile(int slice, char* outfileName)
 	{
 		if (slice < 0 || slice > (numSlices-1))
@@ -555,17 +550,22 @@ namespace DICOM
 	};
 
 	/*
-	 *	FastRotate
+	 *	FastRotate, 
 	 *
-	 *  Rotates a slice
+	 *  Rotates a slice in 2D about the z-axis
 	 */
 	void DICOMReader::FastRotate(float angle, int slice)
 	{
 		// need to ensure that angle is [0, 360)
 		while (angle < 0)
+		{
 			angle+=360.0;
+		}
+
 		while (angle > 360.0)
+		{
 			angle-=360.0;
+		}
 
 		short * dest = new short[width*height];
 	
@@ -738,6 +738,7 @@ namespace DICOM
 			}
 		}
 	
+		// this was used for testing
 		
 		FILE *file;
 		
@@ -760,87 +761,112 @@ namespace DICOM
 		
 	};
 
-	//rotates the volume by theta degrees about arbitrary axis
-	//
-	//NOTE: should add the ability to perform multilp rotation in the one function
-	void DICOMReader::Rotate3D(float theta, float* axis,float ox,float oy,float oz){
+	/**
+	 * rotates the volume by theta degrees about arbitrary axis, centred at the give point (ox,oy,oz)
+	 *
+	 * Axis is a vector parallel to the axis of rotation
+	 * if flag is true then the user has selected to use another isocentre
+	 * NOTE: any data exceeding original dimensions after rotation are cropped
+	 */
+	void DICOMReader::Rotate3D(float theta, float* axis,float ox,float oy,float oz, bool flag)
+	{
+		int i,j,k;                      //for loops
+		int indx,indy,indz;             // indices to be used for intepolation
+		float s,r,t;                    // to store interpolation weights
+		float x,y,z;                    // coordinate of original point
+		float xr,yr,zr;                 // coordinate of rotated point
+		float nx,ny,nz;                 // the nomalised vector components of the axis of rotaion
+		short*** newData_s;             // for short data
+		unsigned char*** newData_uc;    // for unsigned char data
+		unsigned short*** newData_us;   // for unsigned short data
+		float*** newData_f;             // for float data
+		float sintheta,costheta;        // to store sine and cosine of theta
+		float xStep,yStep,zStep;        // the distance from one gridpoint to the next
+		float error;                    // tolerance level
+		float mag;                      // vector magnitude
+		float sum;                      // for weigthed sum of intepolation
+		float rads;                     // theta in radians
+		float xStepinv,yStepinv,zStepinv;
 
-		int i,j,k;
-		int indx,indy,indz;
-		float s,r,t;
-		//float ox,oy,oz;
-		float x,y,z;
-		float xr,yr,zr;
-		float nx,ny,nz;
-		short*** newData_s;
-		unsigned char*** newData_uc;
-		unsigned short*** newData_us;
-		float*** newData_f;
-		float sintheta,costheta;
-		float xStep,yStep,zStep;
-		float* xPoints;
-		float* yPoints;
-		float* zPoints;
-		float error,mag;
-		float sum,rads;
+		error = 0.0000001;
 
 		// need to ensure that angle is [0, 360)
 		while (theta < 0)
+		{
 			theta+=360.0;
-		while (theta > 360.0)
-			theta-=360.0;
+		}
 
-		//special angle cases should be added
+		while (theta > 360.0)
+		{
+			theta-=360.0;
+		}
+
+		//TODO: special angle cases should be added
 
 		//for now we assume the data is of type short
+		// TODO: edit so that other data types are supported
 		newData_s = new short**[numSlices];
-		for (k=0;k<numSlices;k++){
+		for (k=0; k<numSlices; k++)
+		{
 			newData_s[k] = new short*[height];
-			for(j=0;j<height;j++){
+
+			for(j=0; j<height; j++)
+			{
 				newData_s[k][j] = new short[width];
 			}
 		}
-
 		
+		// convert to radians
+		rads = (theta*PI)/180;
 
-			rads = (theta*PI)/180;
-
+		// get trig ratios
+		sintheta = sin(rads);
+		costheta = cos(rads);
 		
-			sintheta = sin(rads);
-			costheta = cos(rads);
-			//printf("%f %f \n",sintheta,costheta);
+		//check that vector parallel to the axis is a unit vector (if not then normalise)
+		if ( fabs(mag = sqrt(axis[0]*axis[0] + axis[1]*axis[1] + axis[2]*axis[2])-1) > error)
+		{
+			// nomalise
+			axis[0] /= mag;
+			axis[1] /= mag;
+			axis[2] /= mag;
+		}
 
-			//check that axis is a unit vector (if not then normalise)
-			if ( fabs(mag = sqrt(axis[0]*axis[0] + axis[1]*axis[1] + axis[2]*axis[2])-1) > error){
+		// to avoid excessive indexing
+		nx = axis[0];
+		ny = axis[1];
+		nz = axis[2];
 
-				axis[0] /= mag;
-				axis[1] /= mag;
-				axis[2] /= mag;
-			}
 
-			nx = axis[0];
-			ny = axis[1];
-			nz = axis[2];
+		//get the midpoint of rotation if none has been specified
+		if (!flag)
+		{
+			ox = (xCoords[0] + xCoords[width-1])*0.5;
+			oy = (yCoords[0] + yCoords[height-1])*0.5;
+			oz = (zCoords[0] + zCoords[numSlices-1])*0.5;
+		}
 
-			//get the midpoint of rotation if none has been specified
-			if (!ox && !oy && !oz ){
-			  ox = (xCoords[0] + xCoords[width-1])*0.5;
-			  oy = (yCoords[0] + yCoords[height-1])*0.5;
-			  oz = (zCoords[0] + zCoords[numSlices-1])*0.5;
-			}
+		// calculate the distance between grid nodes (assumes regular grid)
+		xStep = (xCoords[0] - xCoords[width-1])/(width-1);
+		yStep = (yCoords[0] - yCoords[height-1])/(height-1);
+		zStep = (zCoords[0] - zCoords[numSlices-1])/(numSlices-1);
+		xStepinv = 1/xStep;
+		yStepinv = 1/yStep;
+		zStepinv = 1/zStep;
 
-			xStep = (xCoords[0] - xCoords[width-1])/(width-1);
-			yStep = (yCoords[0] - yCoords[height-1])/(height-1);
-			zStep = (zCoords[0] - zCoords[numSlices-1])/(numSlices-1);
-
-			if ( imageDataType == 2 )//short
+		if ( imageDataType == 2 )//short is only supported right now
+		{
+			// for each grid point
+			for (k=0; k<numSlices; k++)
 			{
-				for (k=0;k<numSlices;k++){
-					for (j=0;j<height;j++){
-						for (i=0;i<width;i++){
-
+				for (j=0; j<height; j++)
+				{
+						for (i=0; i<width; i++)
+						{
+							// initialise data point
 							newData_s[k][j][i] =0;
 
+							// store the coordinates at this point
 							x = xCoords[i];
 							y = yCoords[j];
 							z = zCoords[k];
@@ -852,16 +878,13 @@ namespace DICOM
 							//TODO: add special cases for rotaion about coordinate axes
 					
 							//now get the indices of the nearest grid point 
-								indx = (int)floor((xCoords[0] - xr)/xStep);
-								indy = (int)floor((yCoords[0] - yr)/yStep);
-								indz = (int)floor((zCoords[0] - zr)/zStep);
+								indx = (int)floor((xCoords[0] - xr)*xStepinv);
+								indy = (int)floor((yCoords[0] - yr)*yStepinv);
+								indz = (int)floor((zCoords[0] - zr)*zStepinv);
 
 							//check the point in within the grid bounds
 							if(indx >=0 && indx < (width-1) &&  indy >=0 && indy < (height-1) && indz >=0 && indz < (numSlices-1)){
 
-								
-
-								//printf("do we get here? i,j,k = %d %d %d, indxyz = %d %d %d\n ",i,j,k,indx,indy,indz);
 								//use trilinear interpolation to get the data value for this node
 								s = xCoords[indx] - xr;
 								r = yCoords[indy] - yr;
@@ -878,20 +901,17 @@ namespace DICOM
 								sum += (t)*(1-r)*(s)*((float)data_s[indz+1][indy][indx+1]);
 								sum += (t)*(r)*(1-s)*((float)data_s[indz+1][indy+1][indx]);
 								sum += (t)*(r)*(s)*((float)data_s[indz+1][indy+1][indx+1]);
-								//printf("%f\n",sum);
+					
 
 								newData_s[k][j][i] = (short)round(sum);
-								//printf("%d\n",newData_s[k][j][i]);
+							
 
 							}
 						}
 					}
 				}
-
 				data_s = newData_s;
 			}
-
-			//printf("(%f,%f), (%f,%f) (%f,%f)\n",xCoords[0],xCoords[width-1],yCoords[0],yCoords[height-1],zCoords[0],zCoords[numSlices-1]);
 	};
 
 	void FlipAxis(float* Axis, int Length){
@@ -906,9 +926,15 @@ namespace DICOM
 
 	};
 
-	void DICOMReader::Translate(float x, float y, float z){
+	void DICOMReader::Translate(float x, float y, float z,bool flags){
 
 		int i;
+
+		if(!flags){
+			x = (xCoords[0] + xCoords[width-1])*0.5;
+			y = (yCoords[0] + yCoords[height-1])*0.5;
+			z = (zCoords[0] + zCoords[numSlices-1])*0.5;
+		}
 
 		for(i=0;i<width;i++)
 			xCoords[i] -= x;
@@ -994,7 +1020,7 @@ namespace DICOM
 	};
 
 	// removes all data outside the given bounds
-	void DICOMReader::Select_Region(float xmin,float xmax,float ymin, float ymax, float zmin, float zmax){
+	int DICOMReader::Select_Region(float xmin,float xmax,float ymin, float ymax, float zmin, float zmax){
 
 		short*** temp;
 		float xStep,yStep,zStep;
@@ -1007,17 +1033,34 @@ namespace DICOM
 
 		xStep = (xCoords[0] - xCoords[width-1])/(width-1);
 		yStep = (yCoords[0] - yCoords[height-1])/(height-1);
-		zStep = (zCoords[0] - zCoords[numSlices-1])/(numSlices-1);
-		//printf("%f %f %f\n",xStep,yStep,zStep);
-		//printf("%f %f %f\n",xCoords[0],yCoords[0],zCoords[0]);
-		//printf("%f %f %f\n",xCoords[width-1],yCoords[height-1],zCoords[numSlices-1]);
-		
+		zStep = (zCoords[numSlices-1]-zCoords[0])/(numSlices-1);
+
+		// just a bit of bounds checking
+		if (xmin < xCoords[0] || xmax > xCoords[width-1] || xmin > xmax)
+		{
+			printf("ERROR: Selected x region exceeds data range\n");
+			printf("Selected Range was (%f %f)\n",xmin,xmax);
+			printf("Data Range is (%f %f)\n",xCoords[0],xCoords[width-1]);
+			return 1;
+		}
+		if (ymin < yCoords[0] || ymax > yCoords[height-1] || ymin > ymax)
+		{
+			printf("ERROR: Selected y region exceeds data range\n");
+			printf("Selected Range was (%f %f)\n",ymin,ymax);
+			printf("Data Range is (%f %f)\n",yCoords[0],yCoords[height-1]);
+			return 1;
+		}
+		if (zmin < zCoords[numSlices-1] || zmax > zCoords[0] || zmin > zmax)
+		{
+			printf("ERROR: Selected z region exceeds data range\n");
+			printf("Selected Range was (%f %f)\n",zmin,zmax);
+			printf("Data Range is (%f %f)\n",zCoords[numSlices-1],zCoords[0]);
+			return 1;
+		}
 		//initialise memory for selected region
 		xSize = (int)floor((xmin - xmax)/xStep);
 		ySize = (int)floor((ymin - ymax)/yStep);
 		zSize = (int)floor((zmin - zmax)/zStep);
-		//printf("%d %d %d\n",width,height,numSlices);
-		//printf("%d %d %d\n",xSize,ySize,zSize);
 
 		temp = new short**[zSize];
 		for (k=0;k<zSize;k++){
@@ -1033,7 +1076,7 @@ namespace DICOM
 
 		xStart = (int)floor(fabs((xCoords[0] - xmin)/xStep));
 		yStart = (int)floor(fabs((yCoords[0] - ymin)/yStep));
-		zStart = (int)floor(fabs((zCoords[0] - zmin)/zStep));
+		zStart = (int)floor(fabs((zCoords[numSlices-1] - zmin)/zStep));
 		//printf("%d %d %d\n",xStart,yStart,zStart);
 
 		for (k=0;k<zSize;k++){
@@ -1057,6 +1100,8 @@ namespace DICOM
 		xCoords = xtemp;
 		yCoords = ytemp;
 		zCoords = ztemp;
+
+		return 0;
 	};
 
 } //namespace DICOM
