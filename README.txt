@@ -2,46 +2,46 @@
 #---------
 
   Rotates Dicom data as indicated a desired angle about a desired isocentre. 
-  Voxelises data and appends EPID data to the file.
+  Voxelizes data and appends EPID data to the file.
 
   Features:
-  
+  	Version 0.18 - 
+  		- The Volume clipping problem when the volume is rotated or translated to the extremes is now fixed
     Version 0.17 - 
-       - Dicom reader now takes into account the directional cosines of the patients orientation
-       - The Volume clipping problem when the volume is rotated or translated to the extremes is now fixed
-       - Dicom Data Types of float, unsigned char, short, and unsigned short are now handled (though only short has been tested)
+		- Dicom reader now takes into account the directional cosines of the patients orientation
+		- Dicom Data Types of float, unsigned char, short, and unsigned short are now handled (though only short has been tested)
     
     Version 0.16 - 
-       - density data conversion is now more powerful, the user may define there own transfer function for 
-         CT to density (NOTE: as a result of this modification the format of the .inp file has changed, see below)
-       - x and z cooridnates are set in increasing order for use with Dosxyz
-       - Bug with EPID distance is now fixed
-       - problem with converting CT values to densities is now removed by implementing the use of the 
-         Dicom RescaleOffset value (useful, the poor phantom now has a brain)
-       - the selected isocentre is now always set in the centre of the zx plain (0,100,0) for Dosxyz
+		- density data conversion is now more powerful, the user may define there own transfer function for 
+		CT to density (NOTE: as a result of this modification the format of the .inp file has changed, see below)
+		- x and z cooridnates are set in increasing order for use with Dosxyz
+		- Bug with EPID distance is now fixed
+		- problem with converting CT values to densities is now removed by implementing the use of the 
+		Dicom RescaleOffset value (useful, the poor phantom now has a brain)
+		- the selected isocentre is now always set in the centre of the zx plain (0,100,0) for Dosxyz
     
     Version 0.15 -
-       - Y axis now shifted such that y<100 is above the isocentre and y>100 is below
+		- Y axis now shifted such that y<100 is above the isocentre and y>100 is below
 
     Version 0.14 -
-       - volume extended laterally to fully include the EPID
+		- volume extended laterally to fully include the EPID
 
     Version 0.13 -
-        - Input validation has been implemented
-        - some minor bug fixes 
+		- Input validation has been implemented
+		- some minor bug fixes 
      
     From Version 0.12 -
-        -Reads DICOM data, and converts to .egsphant using voxel sizes and coordinate limts specified in .inp file
-        -Rotates the data to a geometrically equivalent orientaion for a new gantry angle (as an input)
-        -Translates the isocentre to 0,0,0 and inverts the y axis
-        -Adds EPID data to .egsphant as specified from an EPID spec file (see below)
-        -Pads the volume with air to fill in space between EPID and phantom, and along the edges where the EPID extends
+		- Reads DICOM data, and converts to .egsphant using voxel sizes and coordinate limts specified in .inp file
+		- Rotates the data to a geometrically equivalent orientaion for a new gantry angle (as an input)
+		- Translates the isocentre to 0,0,0 and inverts the y axis
+		- Adds EPID data to .egsphant as specified from an EPID spec file (see below)
+		- Pads the volume with air to fill in space between EPID and phantom, and along the edges where the EPID extends
 
     From Version 0.11 -
-        -Will read two (2) egsphant files, combine them and write out.  No smarts implemented.
+		- Will read two (2) egsphant files, combine them and write out.  No smarts implemented.
 
     From Version 0.1 -
-        - fixed integer writing to a specified number of characters
+		- fixed integer writing to a specified number of characters
 
 # Authors
 #---------
@@ -66,7 +66,7 @@
 # Package structure :
 #--------------------
 
-  The directory Version_0.12/ is organized as follows :
+  The directory Version_0.18/ is organized as follows :
 
     - EGSPhant.h                 : The single (header) file of the file format storage.
     - DicomReader.h              : Code that reads Dicom data from .dcm files (using DICOMParser), also contains rotation/translation function
@@ -158,7 +158,3 @@ materialNameN
 CTN1,DensityN1,CTN2,DensityN2,...,CTNN,DensityNN, estepeN
 
 
-# Known Issues
-#-----------------
-
- 1. At the moment only DICOM data of type Short is supported

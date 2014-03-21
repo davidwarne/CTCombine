@@ -58,7 +58,8 @@ int EPIDnumMedia;
 float** EPIDLayerInfo;                  // EPIDLayerInfo[0] = material number
                                         // EPIDLayerInfo[1] = material density
                                         // EPIDLayerInfo[2] = Layer Thickness
-std::string* EPIDMaterials;             // EPID material names
+std::string* EPIDMaterials;             // EPID material names
+
 int numMedia;                          // total materials in CT
 std::string* MediaNames;               // names of said materials
 char* mediaCats;                       // category numbers (as ASCII char) of CT materials
@@ -317,6 +318,7 @@ void ConvertDICOMToEGSPhant(DICOMReader* Dicom,EGSPhant* EGS){
 	int xVolVoxels;
 	int yVolVoxels;
 	int zVolVoxels;
+	float xR,yR,zR;
 	int*** hits;
 
 	// get the depth of the EPID in voxels
@@ -340,12 +342,15 @@ void ConvertDICOMToEGSPhant(DICOMReader* Dicom,EGSPhant* EGS){
 	//calculate the number of voxels
 	EGS->xSize = (int)round(EPIDx/vx); // x dimension of the EPID
 	EGS->ySize = (int)round(((fabs(Dicom->ylims[0] - Dicom->ylims[1])*rescale))/vy)+airPadding+EPIDVoxels;
-	EGS->zSize = (int)round(EPIDz/vz); // z dimesion of EPID  
+	EGS->zSize = (int)round(EPIDz/vz); // z dimesion of EPID
+  
  	// print out some grid stats
 	printf("Original Volume Dimensions: %d %d %d\n",Dicom->width,Dicom->height,Dicom->numSlices);
 	printf("Voxel Dimesions %f %f %f\n",vx,vy,vz);
 	printf("Voxelised Grid Dimensions with EPID: %d %d %d\n",EGS->xSize,EGS->ySize,EGS->zSize);
-
+    xR = EGS->xSize/vx;
+    yR = EGS->ySize/vy;
+    zR = EGS->zSize/vz;
 	//include CT medium summary
 	EGS->numberOfMedia = EPIDnumMedia;
 	EGS->mediaNames = EPIDMaterials;
@@ -382,6 +387,21 @@ void ConvertDICOMToEGSPhant(DICOMReader* Dicom,EGSPhant* EGS){
 			}
 		}
 	}
+	
+	// now just write the boundary points (we can just calculate 'em using the start coords and voxel dimensions)
+	for (i=0;i<=EGS->xSize;i++)
+	{
+		EGS->xBoundaries[i] = -(EPIDx*0.5) + i*vx;
+	}
+	for (j=0;j<=EGS->ySize;j++)
+	{
+		EGS->yBoundaries[j] = Dicom->ylims[0]*rescale + j*vy; 
+	}
+
+	for (k=0;k<=EGS->zSize;k++)
+	{
+		EGS->zBoundaries[k] = -(EPIDz*0.5) + k*vz;
+	}
 
 	//store the ESTEP
 	for (i=0;i<numMedia;i++)
@@ -403,11 +423,10 @@ void ConvertDICOMToEGSPhant(DICOMReader* Dicom,EGSPhant* EGS){
 	        {
 	            for(i=0;i<Dicom->width;i++)
 	            {
-	               
 	                // map to a voxel
 	                idx = (int)round(((EPIDx*0.5 + Dicom->xCoords[k][j][i]*rescale)/EPIDx)*EGS->xSize);
 	                idy = (int)round((Dicom->yCoords[k][j][i]-Dicom->ylims[0])/(Dicom->ylims[1]-Dicom->ylims[0])*(yVolVoxels));
-	                idz = (int)round(((EPIDz*0.5 - Dicom->zCoords[k][j][i]*rescale)/EPIDz)*EGS->zSize);;
+	                idz = (int)round(((EPIDz*0.5 - Dicom->zCoords[k][j][i]*rescale)/EPIDz)*EGS->zSize);
 	                
 	                if (idx >=0 && idx < EGS->xSize && idz >= 0 && idz < EGS->zSize)
 	                {
@@ -415,12 +434,9 @@ void ConvertDICOMToEGSPhant(DICOMReader* Dicom,EGSPhant* EGS){
 	                    EGS->voxelDensity[idz][idy][idx] +=(float) Dicom->data_s[k][j][i];
 	                   
 	                    //increment the char in the Hits array (might be better to use medium array)
-	                    if(hits[idz][idy][idx] < HITS_MAX)
-	                    {
-	                        hits[idz][idy][idx]++;
-	                    }
-	                }
-	               
+	                    hits[idz][idy][idx]++;
+	                    
+	               }
 	            }
 	        }
 	    }
@@ -445,10 +461,9 @@ void ConvertDICOMToEGSPhant(DICOMReader* Dicom,EGSPhant* EGS){
 	                    EGS->voxelDensity[idz][idy][idx] +=(float) Dicom->data_f[k][j][i];
 	                   
 	                    //increment the char in the Hits array (might be better to use medium array)
-	                    if(hits[idz][idy][idx] < HITS_MAX)
-	                    {
+	                   
 	                        hits[idz][idy][idx]++;
-	                    }
+	                   
 	                }
 	            }
 	        }
@@ -474,10 +489,9 @@ void ConvertDICOMToEGSPhant(DICOMReader* Dicom,EGSPhant* EGS){
 	                    EGS->voxelDensity[idz][idy][idx] +=(float) Dicom->data_uc[k][j][i];
 	                   
 	                    //increment the char in the Hits array (might be better to use medium array)
-	                    if(hits[idz][idy][idx] < HITS_MAX)
-	                    {
-	                        hits[idz][idy][idx]++;
-	                    }
+	                   
+	                    hits[idz][idy][idx]++;
+	                   
 	                }
 	            }
 	        }
@@ -503,10 +517,9 @@ void ConvertDICOMToEGSPhant(DICOMReader* Dicom,EGSPhant* EGS){
 	                    EGS->voxelDensity[idz][idy][idx] +=(float) Dicom->data_us[k][j][i];
 	                   
 	                    //increment the char in the Hits array (might be better to use medium array)
-	                    if(hits[idz][idy][idx] < HITS_MAX)
-	                    {
-	                        hits[idz][idy][idx]++;
-	                    }
+	                    
+	                    hits[idz][idy][idx]++;
+	                    
 	                }
 	            }
 	        }
@@ -525,6 +538,25 @@ void ConvertDICOMToEGSPhant(DICOMReader* Dicom,EGSPhant* EGS){
 	                CTavg = EGS->voxelDensity[k][j][i]/hits[k][j][i];
 	                //printf("%f\n",CTavg);
 	            }
+	            else if (k>0 && j>0 && i>0 && k<EGS->zSize-1 && i<EGS->xSize-1)
+	            {
+	                if (hits[k-1][j][i]>0 && hits[k+1][j][i]>0)
+	                {
+	                    CTavg = EGS->voxelDensity[k+1][j][i]/hits[k+1][j][i];
+	                }
+	                else if (hits[k][j-1][i]>0 && hits[k][j+1][i]>0)
+	                {
+	                    CTavg = EGS->voxelDensity[k][j+1][i]/hits[k][j+1][i];
+	                }
+	                else if (hits[k][j][i-1] && hits[k][j][i+1])
+	                {
+	                    CTavg = EGS->voxelDensity[k][j][i+1]/hits[k][j][i+1];
+	                }
+	                else
+	                {
+	                    CTavg = densityTransfers[0][0][0];
+	                }
+	            }
 	            else
 	            {
 	                CTavg = densityTransfers[0][0][0];
@@ -537,7 +569,8 @@ void ConvertDICOMToEGSPhant(DICOMReader* Dicom,EGSPhant* EGS){
 				    {
 					    if(CTavg >= densityTransfers[w][0][0] && CTavg <= densityTransfers[w][numControlPoints[w]-1][0])
 					    {
-						    break;					    }
+						    break;
+					    }
 				    }
 				   
 				    // classified
@@ -595,24 +628,22 @@ void ConvertDICOMToEGSPhant(DICOMReader* Dicom,EGSPhant* EGS){
 		}
 	} 
 	
-	// now just write the boundary points (we can just calculate 'em using the start coords and voxel dimensions)
-	for (i=0;i<=EGS->xSize;i++)
-	{
-		EGS->xBoundaries[i] = -(EPIDx*0.5) + i*vx;
-	}
-	for (j=0;j<=EGS->ySize;j++)
-	{
-		EGS->yBoundaries[j] = Dicom->ylims[0]*rescale + j*vy; 
-	}
-
-	for (k=0;k<=EGS->zSize;k++)
-	{
-		EGS->zBoundaries[k] = -(EPIDz*0.5) + k*vz;
-	}
+	
 
 	// now remove the cushion
 	EGS->RemoveCushion(mediaCats[1],mediaCats[0],mediaCats[1]);
 	
+	// debug stuff
+	FILE* file = fopen("HITS.txt","w");
+	for (k=0;k<EGS->zSize;k++){
+	    for (j=0;j<EGS->ySize;j++){
+	        for (i=0; i<EGS->xSize;i++){
+	            fprintf(file,"%d",hits[k][j][i]);
+	        }
+	        fprintf(file,"\n");
+	     }
+	     fprintf(file,"\n");
+	 }       
 }
 
 /* READEPIDSPEC: Reader for the EPID info file used to generate EPID Layers in ConvertDICOMtoEGSPhant()
@@ -783,7 +814,7 @@ int ReadINP(const char* filename)
 		}
 		printf("control points for %d: %d\n",i+1,numControlPoints[i]);
 	}
-	fscanf(file,"\n",temp);
+	fscanf(file,"\n");
 
 	// intialise the Material Name,Category, and conversion data arrays
 	MediaNames = new std::string[numMedia];
@@ -904,7 +935,7 @@ int ReadArgs(int argc, char* argv[]){
 			}
 			else if (!strcmp(argv[i],"-g"))//indicates direction of zero gantry angle
 			{
-				Z_gantry[0] = atof(argv[++i]);//theta angle
+				Z_gantchry[0] = atof(argv[++i]);//theta angle
 				Z_gantry[1] = atof(argv[++i]);//phi angle
 			}
 			else if (!strcmp(argv[i],"-r")) //indicates theta and phi rotation angles
