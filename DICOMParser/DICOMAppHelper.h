@@ -365,15 +365,28 @@ public:
     return this->SliceNumber;
     }
 
+
+ // the next three I added - Dave
+  // actual CT value = rescaleSlope*CTdata + RescaleOffset 
+  // gets the rescale offset variable
   float GetRescaleOffset()
   {
 	  return this->RescaleOffset;
   }
 
+  // Gets the rescale slope
   float GetRescaleSlope()
   {
 	  return this->RescaleSlope;
   }
+  
+  // get the Orientation data 
+  float* GetOrientation()
+  {
+     return this->ImageOrientationPatient;
+  }
+  
+  
 
   /** Clear the internal databases. This will reset the internal
    * databases that are grouping filenames based on SeriesUID's and
@@ -420,6 +433,7 @@ public:
   int SliceNumber; 
   int Dimensions[2];
   float ImagePositionPatient[3];
+  float ImageOrientationPatient[6];
 
   // map from series UID to vector of files in the series 
   // dicom_stl::map<dicom_stl::string, dicom_stl::vector<dicom_stl::string>, ltstdstr> SeriesUIDMap;

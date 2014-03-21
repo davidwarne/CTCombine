@@ -78,6 +78,7 @@ DICOMAppHelper::DICOMAppHelper()
   this->PixelSpacing[0] = this->PixelSpacing[1] = 1.0;
   this->Dimensions[0] = this->Dimensions[1] = 0;
   this->PhotometricInterpretation = NULL;
+  
   this->TransferSyntaxUID = NULL;
   this->RescaleOffset = 0.0;
   this->RescaleSlope = 1.0;
@@ -548,7 +549,24 @@ void DICOMAppHelper::ImageOrientationPatientCallback(DICOMParser *parser,
             &ord.ImageOrientationPatient[3],
             &ord.ImageOrientationPatient[4],
             &ord.ImageOrientationPatient[5] );
-    
+            
+    // here is jus a quick hack to test what happens - Dave
+    // TODO: remove
+/*    ord.ImageOrientationPatient[0] = 1.0;
+    ord.ImageOrientationPatient[1] = 0.0;
+    ord.ImageOrientationPatient[2] = 1.0;
+    ord.ImageOrientationPatient[3] = 0.0;
+    ord.ImageOrientationPatient[4] = 1.0;
+    ord.ImageOrientationPatient[5] = 0.0;
+            
+    printf("Ordering Info: %f %f %f %f %f %f\n",&ord.ImageOrientationPatient[0],
+            ord.ImageOrientationPatient[1],
+            ord.ImageOrientationPatient[2],
+            ord.ImageOrientationPatient[3],
+            ord.ImageOrientationPatient[4],
+            ord.ImageOrientationPatient[5] );
+    ////////////////////////////////////////////////////////////////////////////////
+  */  
     // insert into the map
     this->Implementation->SliceOrderingMap.insert(dicom_stl::pair<const dicom_stl::string, DICOMOrderingElements>(parser->GetFileName(), ord));
     }
@@ -562,6 +580,32 @@ void DICOMAppHelper::ImageOrientationPatientCallback(DICOMParser *parser,
             &(*it).second.ImageOrientationPatient[3],
             &(*it).second.ImageOrientationPatient[4],
             &(*it).second.ImageOrientationPatient[5] );
+            
+     // a bit of a hack, but I want this data
+     this->ImageOrientationPatient[0] = (*it).second.ImageOrientationPatient[0];
+     this->ImageOrientationPatient[1] = (*it).second.ImageOrientationPatient[1];
+     this->ImageOrientationPatient[2] = (*it).second.ImageOrientationPatient[2];
+     this->ImageOrientationPatient[3] = (*it).second.ImageOrientationPatient[3];
+     this->ImageOrientationPatient[4] = (*it).second.ImageOrientationPatient[4];
+     this->ImageOrientationPatient[5] = (*it).second.ImageOrientationPatient[5];
+     
+     // here is jus a quick hack to test what happens - Dave
+    // TODO: remove
+    /*        (*it).second.ImageOrientationPatient[0] = 1.0;
+            (*it).second.ImageOrientationPatient[1] =0.0;
+            (*it).second.ImageOrientationPatient[2] = 1.0;
+            (*it).second.ImageOrientationPatient[3] =0.0;
+            (*it).second.ImageOrientationPatient[4] =1.0;
+            (*it).second.ImageOrientationPatient[5] =0.0;
+            
+    printf("Ordering Info: %f %f %f %f %f %f\n",(*it).second.ImageOrientationPatient[0],
+            (*it).second.ImageOrientationPatient[1],
+            (*it).second.ImageOrientationPatient[2],
+            (*it).second.ImageOrientationPatient[3],
+            (*it).second.ImageOrientationPatient[4],
+            (*it).second.ImageOrientationPatient[5]  );
+    ////////////////////////////////////////////////////////////////////////////////
+    */
     }
 }
 

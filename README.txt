@@ -5,6 +5,11 @@
   Voxelises data and appends EPID data to the file.
 
   Features:
+  
+    Version 0.17 - 
+       - Dicom reader now takes into account the directional cosines of the patients orientation
+       - The Volume clipping problem when the volume is rotated or translated to the extremes is now fixed
+       - Dicom Data Types of float, unsigned char, short, and unsigned short are now handled (though only short has been tested)
     
     Version 0.16 - 
        - density data conversion is now more powerful, the user may define there own transfer function for 
@@ -156,6 +161,4 @@ CTN1,DensityN1,CTN2,DensityN2,...,CTNN,DensityNN, estepeN
 # Known Issues
 #-----------------
 
- 1. At the moment only DICOM data of type Short is supported
- 2. rotations in which points are rotated outside of the original data volume are removed, I have a feeling 
-    that this is not the best way to go.
+ 1. At the moment only DICOM data of type Short is supported

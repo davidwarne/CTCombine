@@ -3,7 +3,7 @@
  *
  * @Authors: Mark Dwyer, David Warne
  * @Contact: m2.dwyer@qut.edu.au, david.warne@qut.edu.au
- * @Last Modified: 16/02/2009
+ * @Last Modified: 19/03/2009
  *
  * Summary:
  *    Makes use of DicomReader and EGSPhant objects to re-orientate and convert data from DICOM to EGSPhant format.
@@ -26,22 +26,13 @@ using namespace EGS;
 using namespace DICOM;
 
 #define AIRDENSE 0.001
-#define VERSION 0.13
+#define VERSION 0.18
+#define HITS_MAX 100
 
 template<class T>
 void byteswap(T* t)
 {
 	std::reverse(reinterpret_cast<char*>(t), reinterpret_cast<char*>(t + 1));
-}
-
-
-
-void Get_EGSPHANT_Stats(const char *filename)
-{
-	
-	EGSPhant data((char *)filename);
-	int result = data.Read();
-	result = data.PrintStats();		
 }
 
 
@@ -67,25 +58,24 @@ int EPIDnumMedia;
 float** EPIDLayerInfo;                  // EPIDLayerInfo[0] = material number
                                         // EPIDLayerInfo[1] = material density
                                         // EPIDLayerInfo[2] = Layer Thickness
-std::string* EPIDMaterials;             // EPID material names
-
-//similar info for the CT scan
-int numMedia;
-std::string* MediaNames;
-char* mediaCats;
-float** conversionData;                 //stores the conversion data
-int* numControlPoints;
-float* estepes;
-float*** densityTransfers;
-
+std::string* EPIDMaterials;             // EPID material names
+int numMedia;                          // total materials in CT
+std::string* MediaNames;               // names of said materials
+char* mediaCats;                       // category numbers (as ASCII char) of CT materials
+float** conversionData;                // stores the conversion data
+int* numControlPoints;                 // total control points for each density transfer function
+float* estepes;                        // to store the ESTEPEs (whatever they are)
+float*** densityTransfers;             // density transfer functions (one per material)
 
 
 /*
- * Combine the CT with the EPID data, is probably redundant now we create EPID data on conversion From Dicom
+ * COMBINE_EGSPHANT: Combine the CT with the EPID data, is probably redundant now we create 
+ *                   EPID data on conversion From Dicom
  *
- * Params: ct_filename - the phantom dataset
- * 	      epid_filename - the epid dataset
- *
+ * Parameters: 
+ *            ct_filename     - the phantom dataset
+ * 	          epid_filename   - the epid dataset
+ *            output_filename - the name of the output file
  */
 void Combine_EGSPHANT(const char *ct_filename, const char *epid_filename, const char *output_filename)
 {
@@ -101,7 +91,7 @@ void Combine_EGSPHANT(const char *ct_filename, const char *epid_filename, const 
 	int result2 = epid_data.Read();
 
 	//number of rows of air required to get the desired EDIP distance
-	airPadding = (int)floor(EPID_dist-fabs(ct_data.yBoundaries[ct_data.ySize]-iy));
+	airPadding = (int)round(EPID_dist-fabs(ct_data.yBoundaries[ct_data.ySize]-iy));
 
 	// Need to ensure that these data may be combined - check dimensions
 	if (ct_data.xSize > epid_data.xSize )
@@ -201,7 +191,7 @@ void Combine_EGSPHANT(const char *ct_filename, const char *epid_filename, const 
 	}
 
 	// the column in which the CT data starts 
-	int xdataStart = (int)floor((epid_data.xSize - ct_data.xSize)/2);
+	int xdataStart = (int)round((epid_data.xSize - ct_data.xSize)/2);
 	
 	// Start Initialising
 	for (k = 0; k<combine.zSize; k++)
@@ -299,33 +289,35 @@ void Combine_EGSPHANT(const char *ct_filename, const char *epid_filename, const 
 
 
 /*
-* Converts DICOM data as extracted from a DICOMreader object and converts it to the voxelised
-* EGSPhant format, incudes EPID data generation 
+* CONVERTDICOMTOEGSPHANT: Converts DICOM data as extracted from a DICOMreader object and converts it to the 
+*                         voxelised EGSPhant format, incudes EPID data generation 
 *
-* TODO: fix the CT to classification (in light of the new offset information)
-*       add tranfer function specification for the CT to density conversion
+* Parameters:
+*                DICOM - pointer to DicomReader object
+*                EGS   - pointer to EGSPhant object
+*
+* Pre-Condition: for the conversion to work is that the coordinates have already been
+*       translated such that the iso-centre is now the origin
 */
 void ConvertDICOMToEGSPhant(DICOMReader* Dicom,EGSPhant* EGS){
 
 	
-	float rescale = 0.1;          //DICOM data coords are in mm and EGSPhant is in cm
-	int i,j,k;                    //loop counters
-	int idx,idy,idz;              //indices used as starting point for interpolation
-	float lr,ls,lt,r,s,t;         // weights used for interpolation
-	float dx,dy,dz;               //voxel size in terms of DICOM data grid indices
-	
-	float total,CTavg;            // used to calculate the voxel category
+	float rescale = 0.1;         //DICOM data coords are in mm and EGSPhant is in cm
+	int i,j,k;                   //loop counters
+	int idx,idy,idz;             //indices used as starting point for interpolation
+	float CTavg;                 // used to calculate the voxel category
 	float lowerBound;
-	int nonZero,xdataStart,zdataStart;
-	
-	unsigned w,c;                   //loop counter that we also do some bit-wise stuff with
-	
-	int airPadding;               //all these are used for patitioning volumn into data and air fill-in zones
-	int EPIDVoxels=0; 
+	unsigned w,c;                //loop counter that we also do some bit-wise stuff with	
+	int airPadding;              //all these are used for patitioning volumn into data and air fill-in zones
+	int EPIDVoxels=0;
 	char temp[255];
 	int a,b;
 	int startLayer;
 	int EPIDtop;
+	int xVolVoxels;
+	int yVolVoxels;
+	int zVolVoxels;
+	int*** hits;
 
 	// get the depth of the EPID in voxels
 	for(i=0;i<totalEPIDLayers;i++)
@@ -334,29 +326,25 @@ void ConvertDICOMToEGSPhant(DICOMReader* Dicom,EGSPhant* EGS){
 	}
 
 	//get the number of voxels between the data volume and the EPID surface 
+	airPadding = (int)round((EPID_dist - Dicom->ylims[1]*rescale)/vy);
 	
-	airPadding = (int)floor((EPID_dist - fabs(Dicom->yCoords[Dicom->height-1]*rescale-iy))/vy);
-	//printf("airpadding %d, %f %f %f %f\n",airPadding,iy,EPID_dist,Dicom->yCoords[0],Dicom->yCoords[Dicom->height-1]);
+	if (airPadding < 0)// negatives are un-physical
+	{
+	    airPadding =0;
+	}
 	
-	// get the number of columns befor data starts
-	xdataStart = (int)floor(((EPIDx - fabs(Dicom->xCoords[0] - Dicom->xCoords[Dicom->width -1])*rescale)/vx)*0.5 );
-	zdataStart = (int)floor(((EPIDz - fabs(Dicom->zCoords[0] - Dicom->zCoords[Dicom->numSlices-1])*rescale)/vz)*0.5);
+	xVolVoxels = (int)round(fabs(Dicom->xlims[0] - Dicom->xlims[1])*rescale)/vx;
+	yVolVoxels = (int)round(fabs(Dicom->ylims[0] - Dicom->ylims[1])*rescale)/vy;
+	zVolVoxels = (int)round(fabs(Dicom->zlims[0] - Dicom->zlims[1])*rescale)/vz;
 	
 	//calculate the number of voxels
-	EGS->xSize = (int)floor(EPIDx/vx); // x dimension of the EPID
-	EGS->ySize = (int)floor(((fabs(Dicom->yCoords[0] - Dicom->yCoords[Dicom->height -1])*rescale))/vy)+airPadding+EPIDVoxels;
-	//printf("%f \n",fabs(Dicom->yCoords[0] - Dicom->yCoords[Dicom->height -1]));
-	EGS->zSize = (int)floor(EPIDz/vz); // z dimesion of EPID
-
-	// print out some grid stats
+	EGS->xSize = (int)round(EPIDx/vx); // x dimension of the EPID
+	EGS->ySize = (int)round(((fabs(Dicom->ylims[0] - Dicom->ylims[1])*rescale))/vy)+airPadding+EPIDVoxels;
+	EGS->zSize = (int)round(EPIDz/vz); // z dimesion of EPID  
+ 	// print out some grid stats
 	printf("Original Volume Dimensions: %d %d %d\n",Dicom->width,Dicom->height,Dicom->numSlices);
 	printf("Voxel Dimesions %f %f %f\n",vx,vy,vz);
 	printf("Voxelised Grid Dimensions with EPID: %d %d %d\n",EGS->xSize,EGS->ySize,EGS->zSize);
-
-	// map the size of voxels in cms to size in DICOM data grid indicies
-	dx = (vx*(Dicom->width-1))/(fabs(Dicom->xCoords[0] - Dicom->xCoords[Dicom->width -1])*rescale);
-	dy = (vy*(Dicom->height-1))/(fabs(Dicom->yCoords[0] - Dicom->yCoords[Dicom->height -1])*rescale);
-	dz = (vy*(Dicom->numSlices-1))/(fabs(Dicom->zCoords[0] - Dicom->zCoords[Dicom->numSlices -1])*rescale);
 
 	//include CT medium summary
 	EGS->numberOfMedia = EPIDnumMedia;
@@ -373,16 +361,25 @@ void ConvertDICOMToEGSPhant(DICOMReader* Dicom,EGSPhant* EGS){
 	//initialise the EGS medium and density grids
 	EGS->voxelMedium = new char**[EGS->zSize];
 	EGS->voxelDensity = new float**[EGS->zSize];
+	hits = new int**[EGS->zSize];
 
 	for (k=0; k<EGS->zSize; k++)
 	{
 		EGS->voxelMedium[k] = new char*[EGS->ySize];
 		EGS->voxelDensity[k] = new float*[EGS->ySize];
+		hits[k] = new int*[EGS->ySize];
 
 		for (j=0; j<EGS->ySize; j++)
 		{	
 			EGS->voxelMedium[k][j] = new char[EGS->xSize];
 			EGS->voxelDensity[k][j] = new float[EGS->xSize];
+			hits[k][j] = new int[EGS->xSize];
+			for (i=0;i<EGS->xSize;i++)
+			{
+			    EGS->voxelDensity[k][j][i] = densityTransfers[0][0][1];
+			    EGS->voxelMedium[k][j][i] = mediaCats[0];
+			    hits[k][j][i] = 0;
+			}
 		}
 	}
 
@@ -396,197 +393,180 @@ void ConvertDICOMToEGSPhant(DICOMReader* Dicom,EGSPhant* EGS){
 	{
 		EGS->estepe[i] = 1;
 	}
-
-	//for each voxel
-	for (k=0; k<zdataStart;k++)
+	
+	if (Dicom->imageDataType ==2) //short
 	{
-		for (j=0; j<EGS->ySize-EPIDVoxels;j++)
-		{
-			for (i=0;i<EGS->xSize;i++)
-			{
-				EGS->voxelMedium[k][j][i] = mediaCats[0];
-				EGS->voxelDensity[k][j][i] = densityTransfers[0][0][1];
-			}
-		}
-		//now for the EPID
-
-		EPIDtop = EGS->ySize-EPIDVoxels;
-		a=0;
-		b=0;
-		startLayer =0;
-
-		//for each EPID Layer
-		for(w=0;w<totalEPIDLayers;w++)
-		{
-			//we get the start and end of this Layer in voxels
-			a = startLayer;
-			b = startLayer+(int)ceil(EPIDLayerInfo[w][2]/vy);
-
-			//for the rows in this Layer
-			for(j=EPIDtop+a; j<EPIDtop+b; j++)
-			{
-				// write the Material Category
-				for(i=0; i<EGS->xSize; i++)
-				{
-					sprintf(temp,"%d",(int)EPIDLayerInfo[w][0]);
-					EGS->voxelMedium[k][j][i] = temp[0];
-					EGS->voxelDensity[k][j][i] = EPIDLayerInfo[w][1];
-				}
-			}
-
-			//set up for next Layer
-			startLayer = b; 
-		}
+	    // now map the Dicom Data to the Dicom volume
+	    for (k=0;k<Dicom->numSlices;k++)
+	    {
+	        for(j=0;j<Dicom->height;j++)
+	        {
+	            for(i=0;i<Dicom->width;i++)
+	            {
+	               
+	                // map to a voxel
+	                idx = (int)round(((EPIDx*0.5 + Dicom->xCoords[k][j][i]*rescale)/EPIDx)*EGS->xSize);
+	                idy = (int)round((Dicom->yCoords[k][j][i]-Dicom->ylims[0])/(Dicom->ylims[1]-Dicom->ylims[0])*(yVolVoxels));
+	                idz = (int)round(((EPIDz*0.5 - Dicom->zCoords[k][j][i]*rescale)/EPIDz)*EGS->zSize);;
+	                
+	                if (idx >=0 && idx < EGS->xSize && idz >= 0 && idz < EGS->zSize)
+	                {
+	                    // add the CT value to density array to save storage
+	                    EGS->voxelDensity[idz][idy][idx] +=(float) Dicom->data_s[k][j][i];
+	                   
+	                    //increment the char in the Hits array (might be better to use medium array)
+	                    if(hits[idz][idy][idx] < HITS_MAX)
+	                    {
+	                        hits[idz][idy][idx]++;
+	                    }
+	                }
+	               
+	            }
+	        }
+	    }
 	}
-
-	// special case probably not physically relevant... but just in case
-	if (airPadding < 0)
+	else if (Dicom->imageDataType == 0)//float
 	{
-		airPadding =0;
+	    // now map the Dicom Data to the Dicom volume
+	    for (k=0;k<Dicom->numSlices;k++)
+	    {
+	        for(j=0;j<Dicom->height;j++)
+	        {
+	            for(i=0;i<Dicom->width;i++)
+	            {
+	                // map to a voxel
+	                idx = (int)round(((EPIDx*0.5 + Dicom->xCoords[k][j][i]*rescale)/EPIDx)*EGS->xSize);
+	                idy = (int)round((Dicom->yCoords[k][j][i]-Dicom->ylims[0])/(Dicom->ylims[1]-Dicom->ylims[0])*(yVolVoxels));
+	                idz = (int)round(((EPIDz*0.5 - Dicom->zCoords[k][j][i]*rescale)/EPIDz)*EGS->zSize);;
+	                
+	                if (idx >=0 && idx < EGS->xSize && idz >= 0 && idz < EGS->zSize)
+	                {
+	                    // add the CT value to density array to save storage
+	                    EGS->voxelDensity[idz][idy][idx] +=(float) Dicom->data_f[k][j][i];
+	                   
+	                    //increment the char in the Hits array (might be better to use medium array)
+	                    if(hits[idz][idy][idx] < HITS_MAX)
+	                    {
+	                        hits[idz][idy][idx]++;
+	                    }
+	                }
+	            }
+	        }
+	    }
 	}
-
-	for(k=zdataStart; k<EGS->zSize-zdataStart; k++)
+	else if(Dicom->imageDataType == 1) // unsigned char
 	{
-		//the section where the CT data will be written
-		for(j=0;j<EGS->ySize-airPadding-EPIDVoxels;j++)
-		{
-			//pad with air in columes before data
-			for(i=0;i<xdataStart;i++)
-			{
-				EGS->voxelMedium[k][j][i] = mediaCats[0];
-				EGS->voxelDensity[k][j][i] = AIRDENSE;
-			}//end for i
+	    // now map the Dicom Data to the Dicom volume
+	    for (k=0;k<Dicom->numSlices;k++)
+	    {
+	        for(j=0;j<Dicom->height;j++)
+	        {
+	            for(i=0;i<Dicom->width;i++)
+	            {   
+	                 // map to a voxel
+	                idx = (int)round(((EPIDx*0.5 + Dicom->xCoords[k][j][i]*rescale)/EPIDx)*EGS->xSize);
+	                idy = (int)round((Dicom->yCoords[k][j][i]-Dicom->ylims[0])/(Dicom->ylims[1]-Dicom->ylims[0])*(yVolVoxels));
+	                idz = (int)round(((EPIDz*0.5 - Dicom->zCoords[k][j][i]*rescale)/EPIDz)*EGS->zSize);;
+	                
+	                if (idx >=0 && idx < EGS->xSize && idz >= 0 && idz < EGS->zSize)
+	                {
+	                    // add the CT value to density array to save storage
+	                    EGS->voxelDensity[idz][idy][idx] +=(float) Dicom->data_uc[k][j][i];
+	                   
+	                    //increment the char in the Hits array (might be better to use medium array)
+	                    if(hits[idz][idy][idx] < HITS_MAX)
+	                    {
+	                        hits[idz][idy][idx]++;
+	                    }
+	                }
+	            }
+	        }
+	    }
+	}
+	else if (Dicom->imageDataType == 3) // unsigned short
+	{
+	    // now map the Dicom Data to the Dicom volume
+	    for (k=0;k<Dicom->numSlices;k++)
+	    {
+	        for(j=0;j<Dicom->height;j++)
+	        {
+	            for(i=0;i<Dicom->width;i++)
+	            {
+	                // map to a voxel
+	                idx = (int)round(((EPIDx*0.5 + Dicom->xCoords[k][j][i]*rescale)/EPIDx)*EGS->xSize);
+	                idy = (int)round((Dicom->yCoords[k][j][i]-Dicom->ylims[0])/(Dicom->ylims[1]-Dicom->ylims[0])*(yVolVoxels));
+	                idz = (int)round(((EPIDz*0.5 - Dicom->zCoords[k][j][i]*rescale)/EPIDz)*EGS->zSize);;
+	                
+	                if (idx >=0 && idx < EGS->xSize && idz >= 0 && idz < EGS->zSize)
+	                {
+	                    // add the CT value to density array to save storage
+	                    EGS->voxelDensity[idz][idy][idx] +=(float) Dicom->data_us[k][j][i];
+	                   
+	                    //increment the char in the Hits array (might be better to use medium array)
+	                    if(hits[idz][idy][idx] < HITS_MAX)
+	                    {
+	                        hits[idz][idy][idx]++;
+	                    }
+	                }
+	            }
+	        }
+	    }
+	}
+	
+	//use info in the medium and desity arrrays to find actual data
+	for (k=0;k<EGS->zSize;k++)
+	{
+	    for(j=0;j<EGS->ySize-EPIDVoxels;j++)
+	    {
+	        for(i=0;i<EGS->xSize;i++)
+	        {
+	            if(hits[k][j][i])
+	            {
+	                CTavg = EGS->voxelDensity[k][j][i]/hits[k][j][i];
+	                //printf("%f\n",CTavg);
+	            }
+	            else
+	            {
+	                CTavg = densityTransfers[0][0][0];
+	            }
+	            
+	            if(CTavg > densityTransfers[0][0][0])
+	            {
+	                //find which category of material this CTavg is within
+				    for(w=0;w<numMedia-1;w++)
+				    {
+					    if(CTavg >= densityTransfers[w][0][0] && CTavg <= densityTransfers[w][numControlPoints[w]-1][0])
+					    {
+						    break;					    }
+				    }
+				   
+				    // classified
+				    EGS->voxelMedium[k][j][i] = mediaCats[w];
+				    lowerBound =0;
+				    // now find which interval of the transfer function for this material the CTavg in within
+				    for(c=0;c<numControlPoints[w]-2;c++)
+				    {
+					    if( CTavg >= densityTransfers[w][c][0] && CTavg <= densityTransfers[w][c+1][0])
+					    {
+						    break;
+					    }
+				    }
 
-			//categorise all voxels in data grid and interpolate the densities
-			for(i=xdataStart;i<EGS->xSize-xdataStart;i++)
-			{
-				total =0; //sum the data values on the voxel vertices
-				//nonZero = 0; // keeps track of non-air vertices for weighting
-
-				/* the verticies may not be on DICOM grid points, 
-				 * so we must interpolate the data on the boundaries
-				 */
-				for (w=0;w<8;w++)
-				{	
-					// use the voxel indecies to map to the indices of the surrounding DICOM grid points 
-					lr = (float)((i-xdataStart+(w & 1)))*dx;
-					ls = (float)((j+((w & 2)>>1)))*dy;
-					lt = (float)((k-zdataStart+((w & 4)>>2)))*dz;
-					idx = (int)floor(lr);
-					idy = (int)floor(ls);
-					idz = (int)floor(lt);
-					r = lr - idx;
-					s = ls - idy;
-					t = lt - idz;
-		
-					//if the point is within grid bounds form a weighted sum of the surrounding points 
-					//(just summed to the total since we where going to add them anyway)
-					if (idx >= 0 && idy >= 0 && idz >= 0 && (idx < Dicom->width-1) && (idy < Dicom->height-1) && (idz < Dicom->numSlices-1))
-					{						
-						total += (1-r)*(1-s)*(1-t)*((float)Dicom->data_s[idz][idy][idx]);						
-						total += (r)*(1-s)*(1-t)*((float)Dicom->data_s[idz][idy][idx+1]);
-						total += (1-r)*(s)*(1-t)*((float)Dicom->data_s[idz][idy+1][idx]);
-						total += (1-r)*(1-s)*(t)*((float)Dicom->data_s[idz+1][idy][idx]);
-						total += (r)*(s)*(1-t)*((float)Dicom->data_s[idz][idy+1][idx+1]);
-						total += (r)*(1-s)*(t)*((float)Dicom->data_s[idz+1][idy][idx+1]);						
-						total += (1-r)*(s)*(t)*((float)Dicom->data_s[idz+1][idy+1][idx]);
-						total += (r)*(s)*(t)*((float)Dicom->data_s[idz+1][idy+1][idx+1]);
-					}
-				}//end for w
-				
-				CTavg = total*0.125;
-				
-
-				//categorise Voxel
-
-				//categorisation and density calculation version one: works, but only allows users to specify upper and lower bounds
-/*				lowerBound =0;
-
-				for(w=0;w<numMedia;w++)
-				{
-					//if its not in this range of this category, then we move on to the nex one
-					if( !(CTavg >= lowerBound && CTavg < conversionData[w][0]) && !(CTavg < 0) && !(CTavg > conversionData[numMedia-1][0]))
-					{
-						lowerBound = conversionData[w][0];
-					}
-					else //we've found the category and we stop
-					{
-						break;
-					}
-				}
-				
-				//write classification of voxel
-				EGS->voxelMedium[k][j][i] = mediaCats[w];
-				//interpolate using linear interpolation
-				EGS->voxelDensity[k][j][i] = ((conversionData[w][2]-conversionData[w][1])*(CTavg - lowerBound))/(conversionData[w][0]-lowerBound) + conversionData[w][1];
-*/				
-				// categorisation and density calculation version 2: try to work in transfer fucntion spec
-
-				if(CTavg >= densityTransfers[numMedia-1][numControlPoints[numMedia-1]-1][0])
-				{
-					EGS->voxelMedium[k][j][i] = mediaCats[numMedia-1];
-					EGS->voxelDensity[k][j][i] = densityTransfers[numMedia-1][numControlPoints[numMedia-1]-1][1];
-				}
-				else if(CTavg < densityTransfers[0][0][0])
-				{
-				    EGS->voxelMedium[k][j][i] = mediaCats[0];
-				    EGS->voxelDensity[k][j][i] = densityTransfers[0][0][1];
+				    //interpolate using linear interpolation
+				    EGS->voxelDensity[k][j][i] = ((densityTransfers[w][c+1][1]-densityTransfers[w][c][1])*(CTavg - densityTransfers[w][c][0]))/(densityTransfers[w][c+1][0]-densityTransfers[w][c][0]) + densityTransfers[w][c][1];
 				}
 				else
 				{
-					//find which category of material this CTavg is within
-					for(w=0;w<numMedia-1;w++)
-					{
-						if(CTavg >= densityTransfers[w][0][0] && CTavg < densityTransfers[w][numControlPoints[w]-1][0])
-						{
-							break;
-						}
-					}
-
+				    EGS->voxelDensity[k][j][i] = densityTransfers[0][0][1];
+				    EGS->voxelMedium[k][j][i] = mediaCats[0];
+				}
 				
-					//printf("CTavg %f %d\n",CTavg,w);
-					// classified
-					EGS->voxelMedium[k][j][i] = mediaCats[w];
-					lowerBound =0;
-					// now find which interval of the transfer function for this material the CTavg in within
-					//printf("CTavg %f %d\n",CTavg,w);
-					for(c=0;c<numControlPoints[w]-2;c++)// c++ hehe, how ironic
-					{
-						if( CTavg >= densityTransfers[w][c][0] && CTavg <= densityTransfers[w][c+1][0])
-						{
-							break;
-						}
-					}
-					
-					
-					//printf("CTavg %f %d\n",CTavg,w);
-					//interpolate using linear interpolation
-					EGS->voxelDensity[k][j][i] = ((densityTransfers[w][c+1][1]-densityTransfers[w][c][1])*(CTavg - densityTransfers[w][c][0]))/(densityTransfers[w][c+1][0]-densityTransfers[w][c][0]) + densityTransfers[w][c][1];
-				}
-			}//end for i
-
-			//pad with air the columns following the data 
-			for(i=EGS->xSize-xdataStart; i<EGS->xSize; i++)
-			{
-				EGS->voxelMedium[k][j][i] = mediaCats[0];
-				EGS->voxelDensity[k][j][i] =densityTransfers[0][0][1];
-			}//end for i
-		}//end for j
-
-		// Pad the Rows between the Volume and the and EPID with air
-		for(j=EGS->ySize-airPadding-EPIDVoxels; j<EGS->ySize-EPIDVoxels; j++)
-		{
-			//theses layers are all air
-			for(i=0; i<EGS->xSize; i++)
-			{
-				EGS->voxelMedium[k][j][i] = mediaCats[0];
-				EGS->voxelDensity[k][j][i] = densityTransfers[0][0][1];
-			}
-		}
-
-		//now for the EPID
-
-		EPIDtop = EGS->ySize-EPIDVoxels;
+	        }
+	    }
+	  
+	    
+	    // now for the EPID
+	    EPIDtop = EGS->ySize-EPIDVoxels;
 		a=0;
 		b=0;
 		startLayer =0;
@@ -613,51 +593,8 @@ void ConvertDICOMToEGSPhant(DICOMReader* Dicom,EGSPhant* EGS){
 			//set up for next Layer
 			startLayer = b; 
 		}
-		
-	}
-
-	//for each voxel
-	for (k=EGS->zSize-zdataStart; k<EGS->zSize;k++)
-	{
-		for (j=0; j<EGS->ySize-EPIDVoxels;j++)
-		{
-			for (i=0;i<EGS->xSize;i++)
-			{
-				EGS->voxelMedium[k][j][i] = mediaCats[0];
-				EGS->voxelDensity[k][j][i] = densityTransfers[0][0][1];
-			}
-		}
-		//now for the EPID
-
-		EPIDtop = EGS->ySize-EPIDVoxels;
-		a=0;
-		b=0;
-		startLayer =0;
-
-		//for each EPID Layer
-		for(w=0;w<totalEPIDLayers;w++)
-		{
-			//we get the start and end of this Layer in voxels
-			a = startLayer;
-			b = startLayer+(int)ceil(EPIDLayerInfo[w][2]/vy);
-
-			//for the rows in this Layer
-			for(j=EPIDtop+a; j<EPIDtop+b; j++)
-			{
-				// write the Material Category
-				for(i=0; i<EGS->xSize; i++)
-				{
-					sprintf(temp,"%d",(int)EPIDLayerInfo[w][0]);
-					EGS->voxelMedium[k][j][i] = temp[0];
-					EGS->voxelDensity[k][j][i] = EPIDLayerInfo[w][1];
-				}
-			}
-
-			//set up for next Layer
-			startLayer = b; 
-		}
-	}
-
+	} 
+	
 	// now just write the boundary points (we can just calculate 'em using the start coords and voxel dimensions)
 	for (i=0;i<=EGS->xSize;i++)
 	{
@@ -665,7 +602,7 @@ void ConvertDICOMToEGSPhant(DICOMReader* Dicom,EGSPhant* EGS){
 	}
 	for (j=0;j<=EGS->ySize;j++)
 	{
-		EGS->yBoundaries[j] = Dicom->yCoords[0]*rescale + j*vy; // because the y's are increasing
+		EGS->yBoundaries[j] = Dicom->ylims[0]*rescale + j*vy; 
 	}
 
 	for (k=0;k<=EGS->zSize;k++)
@@ -675,41 +612,14 @@ void ConvertDICOMToEGSPhant(DICOMReader* Dicom,EGSPhant* EGS){
 
 	// now remove the cushion
 	EGS->RemoveCushion(mediaCats[1],mediaCats[0],mediaCats[1]);
-}
-
-//Just a simple function that was used for debugging purposes
-void ReadDicoms_Test( const char *directory,float deg, int slice)
-{
-	float axis[3] = {0,0,1};
 	
-	DICOMReader reader((char *)directory);
-	reader.ReadSample();
-	reader.ReadAll();
-
-	reader.WriteTestFile();
-	reader.Select_Region(-10,10,-100,-90,-10,10,false);
-	reader.PrintAllFiles();
-
-	reader.OutputSliceToFile(slice,"Pre-rotation");
-	reader.Rotate3D(deg,axis,ix,iy,iz,flag);
-	printf("rotated and angle of %f\n",deg);
-	reader.OutputSliceToFile(slice,"Post-rotation");
-	
-
 }
 
-// Another Test function used for initial testing of rotation
-void TestEGSPhantRotate(const char* file, float deg,const char* outfile)
-{	
-	float axis[3] = {0,0,1};
-	EGSPhant data((char*)file);
-	data.Read();
-	data.Rotate3D(deg,axis);
-	data.Write();
-}
-
-
-// Reader for the EPID info file used to generate EPID Layers in ConvertDICOMtoEGSPhant()
+/* READEPIDSPEC: Reader for the EPID info file used to generate EPID Layers in ConvertDICOMtoEGSPhant()
+ *
+ * Parameters: 
+ *             filename - name of the EPID file
+ */
 int ReadEPIDspec(const char* filename){
 
 	FILE* file;
@@ -779,124 +689,12 @@ int ReadEPIDspec(const char* filename){
 	return 0;
 }
 
-// reads the .inp input file that specifies parameters for conversion to EGSPhant format
+/* READINP: Reads the .inp input file that specifies parameters for conversion to EGSPhant format
+ * 
+ * Parameters: 
+ *            filename - name of the .inp file
+ */
 int ReadINP(const char* filename)
-{
-	FILE* file;
-	int i;
-	float tmp=0;
-	char temp[255];
-	char s[255];
-
-	// check we can open the file
-	if(!(file = fopen(filename,"r")))
-	{
-		printf("ERROR: could not open .inp data file\n");
-		return 1;
-	}
-	
-	//skip the first two lines
-	if(!(fscanf(file,"%s\n",temp)==1))
-	{
-		printf("ERROR: could not read data format\n");
-		return 1;
-	}
-
-	// check the data format
-	if(strcmp(temp,"DICOM"))
-	{
-		printf("ERROR: Only DICOM data is supported by CTCombine %f\n",VERSION);
-		return 1;
-	}
-
-	//read DICOM directory
-	if(!(fscanf(file,"%s\n",dir)==1))
-	{
-		printf("ERROR: could not read DICOM directory\n");
-		return 1;
-	}
-
-	// read data volume bounds
-	if(!(fscanf(file,"%f, %f, %f, %f, %f, %f\n",&xmin,&xmax,&ymin,&ymax,&zmin,&zmax)==6))
-	{
-		printf("ERROR: could not read data boundaries\n");
-		return 1;
-	}
-
-	//to make the order of the bounds irrelevent, if they aint in the right order, swp 'em 
-	if (xmin > xmax)
-	{
-		tmp = xmin;
-		xmin = xmax;
-		xmax = tmp;
-	}
-	if (ymin > ymax)
-	{
-		tmp = ymin;
-		ymin = ymax;
-		ymax = tmp;
-	}
-	if (zmin > zmax)
-	{
-		tmp = zmin;
-		zmin = zmax;
-		zmax = tmp;
-	}
-
-	// read voxel dimensions
-	if(!(fscanf(file,"%f, %f, %f\n",&vx,&vy,&vz)==3))
-	{
-		printf("ERROR: could not read voxel dimensions\n");
-		return 1;
-	}
-
-	// read number of media
-	if(!(fscanf(file,"%d\n",&numMedia)==1))
-	{
-		printf("ERROR: could not read number of Materials in CT\n");
-		return 1;
-	}
-
-	// intialise the Material Name,Category, and conversion data arrays
-	MediaNames = new std::string[numMedia];
-
-	mediaCats = new char[numMedia];
-
-	conversionData = new float*[numMedia];
-	for (i=0; i<numMedia; i++)
-	{
-		conversionData[i] = new float[4];
-	}
-
-	// now read in the relevant data
-	for (i=0;i<numMedia;i++)
-	{
-		// read the media name 
-		if (!(fscanf(file,"%s",temp)==1))
-		{
-			printf("ERROR: could not read Material name %d\n",i);
-			return 1;
-		}
-
-		MediaNames[i] = temp;
-
-		//assign a category number
-		sprintf(s,"%d",i+1);
-		mediaCats[i] = s[0]; 
-
-		// read the conversion data
-		if (!(fscanf(file,"%f,%f,%f,%f\n",&(conversionData[i][0]),&(conversionData[i][1]),&(conversionData[i][2]),&(conversionData[i][3]))==4))
-		{
-			printf("ERROR: could not read CT to density conversion data\n");
-			return 1;
-		}
-	}
-
-	return 0;
-}
-
-// reads the .inp input file that specifies parameters for conversion to EGSPhant format
-int ReadINP2(const char* filename)
 {
 	FILE* file;
 	int i,j;
@@ -1041,7 +839,8 @@ int ReadINP2(const char* filename)
 	return 0;
 }
 
-// just dumps an options menu
+/* PRINTHELP: just dumps an options menu
+ */
 int printHelp(){
 	printf("CTCombine: version %f\n",VERSION);
 	printf("\n");
@@ -1062,7 +861,8 @@ int printHelp(){
 	printf("-c file1 file2 file3     Combines the following two files (file1,file2) into the one output file indicayed by file3");
 }
 
-// reads the commandline arguments passed to CTCombine
+/* READARGS: Reads the commandline arguments passed to CTCombine
+ */
 int ReadArgs(int argc, char* argv[]){
 
 	int i;
@@ -1087,7 +887,7 @@ int ReadArgs(int argc, char* argv[]){
 			}
 			else if (!strcmp(argv[i],"-inp"))//indicates INP input data file
 			{
-				if(ReadINP2(argv[++i]))// testing new reader
+				if(ReadINP(argv[++i]))// testing new reader
 				{
 					printf("ERROR: Bad read of file %s\n",argv[i]);
 					return 1;
@@ -1182,127 +982,92 @@ int main(int argc, char* argv[])
 	else
 	{
 		// read the DICOM data
-		printf("DICOM Directory: %s\n",dir);
+		printf("\nDICOM Directory: %s\n",dir);
 		DICOMReader DICOM(dir); //initialise the DICOM reader
 		printf("Reading DICOM data...\n");
 		DICOM.ReadSample();
 		DICOM.ReadAll();
-		//DICOM.OutputSliceToFile(50,"testoffset");
+		
 		printf("Read Complete...\n");
 		//return 0;
 
-		printf("Rotating for new gantry angle...\n");
 		// if no isocentre specified then get the mid point
 		if(!flag) 
 		{
-			DICOM.GetIsoCentre(&ix,&iy,&iz);
+		    printf("\nNo User Suppied Isocentre...");
+		    printf("Calculating...\n");
+			DICOM.GetMidPoint(&ix,&iy,&iz);
 			ix /= scaleFactor;
 			iy /= scaleFactor;
 			iz /= scaleFactor;
+			printf("Calculated Isocentre is (%f %f %f)\n", ix,iy,iz);
 		}
-		//make rotation from zero gantry angle to the new gantry angle 
-		DICOM.Rotate3D(-Z_gantry[0] + theta,zaxis,ix*scaleFactor,iy*scaleFactor,iz*scaleFactor,flag);
-		DICOM.Rotate3D(-Z_gantry[1] + phi,xaxis,ix*scaleFactor,iy*scaleFactor,iz*scaleFactor,flag);
-		printf("Rotation Complete...\n");
-		// Select from the rotated data the desired data region
-		printf("Setting bounds...\n");
-		if(DICOM.Select_Region(xmin*10,xmax*scaleFactor,ymin*scaleFactor,ymax*scaleFactor,zmin*scaleFactor,zmax*scaleFactor,flag))
+		else
 		{
-			printf("Could not complete operation exiting...\n");
-			return 1;
+		    printf("User Supplied Isocentre is (%f %f %f).\n",ix,iy,iz);
 		}
-		// translate to new isocentre
+		// Select from the rotated data the desired data region
+		printf("\nSetting bounds...\n");
+		printf("Oringinal bounds were (%f, %f),(%f, %f),(%f, %f)\n",DICOM.xlims[0],DICOM.xlims[1],DICOM.ylims[0],DICOM.ylims[1],DICOM.zlims[0],DICOM.zlims[1]);
 		
-		printf("Converting to .egsphant...\n");
+		//Case 1: bounds within EPID Dimension
+		if(xmax - xmin <= EPIDx && zmax - zmin <= EPIDz)
+		{
+		    if(DICOM.Select_Region(xmin*scaleFactor,xmax*scaleFactor,ymin*scaleFactor,ymax*scaleFactor,zmin*scaleFactor,zmax*scaleFactor))
+		    {
+			    printf("Could not complete operation exiting...\n");
+			    return 1;
+		    }
+		    printf("Selected region Was (%f, %f), (%f, %f), (%f, %f)\n",xmin,xmax,ymin,ymax,zmin,zmax);
+		}
+		else //Case 2: we need to crop the data volume
+		{
+		    printf("Selected region exceeds EPID dimensions... cropping...\n");
+		    
+		    while(xmax - xmin > EPIDx)
+		    {
+		        xmax--;
+		        xmin++;
+		    }
+		    
+		    while(zmax - zmin > EPIDz)
+		    {
+		        zmax--;
+		        zmax++;
+		    }
+		    
+		     if(DICOM.Select_Region(xmin*scaleFactor,xmax*scaleFactor,ymin*scaleFactor,ymax*scaleFactor,zmin*scaleFactor,zmax*scaleFactor))
+		    {
+			    printf("Could not complete operation exiting...\n");
+			    return 1;
+		    }
+		    printf("Selected region Was (%f, %f), (%f, %f), (%f, %f)\n",xmin,xmax,ymin,ymax,zmin,zmax);
+		}
+			
+		//make rotation from zero gantry angle to the new gantry angle 
+		printf("\nRotating To new granty angle...\n");
+		DICOM.Rotate3D(-Z_gantry[0] + theta,zaxis,ix*scaleFactor,iy*scaleFactor,iz*scaleFactor);
+		DICOM.Rotate3D(-Z_gantry[1] + phi,xaxis,ix*scaleFactor,iy*scaleFactor,iz*scaleFactor);
+		printf("Rotation Complete...\n");
+		
+		printf("\nTranslating to isocentre (%f, %f, %f)...\n",ix,iy,iz);
+		DICOM.Translate(ix*scaleFactor,iy*scaleFactor,iz*scaleFactor);
+		
+		printf("\nConverting to .egsphant...\n");
 		//  now initailise EGSPhant object to store converted data
 		EGSPhant EGSct(outputfileName);
 		// convert
 		ConvertDICOMToEGSPhant(&DICOM,&EGSct);
 		printf("data converted...\n");
-		printf("Translating to isocentre (%f, %f, %f)...\n",ix,iy,iz);
-		EGSct.ShiftToOrigin(0,iy,0,flag);
-		//printf("Flipping y axis...\n");
-		//EGSct.FlipY();
-		EGSct.ShiftToOrigin(0,-100,0,true);
-		printf("Writing EGS file...\n");
+
+		printf("Re-defining coordinates for work with Dosxyz...\n");
+		EGSct.ShiftToOrigin(0,-100,0);
+		
+		printf("\nWriting EGS file...\n");
 		// hmm... what does the next line do? Oh yes, thats right... we write to a file
 		EGSct.Write();
 	}
 
-	/*
-	* The Following is all just test code calls that I dont want to delete
-	*
-	*/
-
-	//just a test of the .inp reader
-	//if (argc ==4){
-
-	//	std::string INPfilename(argv[1]);
-
-	//	if(ReadINP(INPfilename.c_str())){
-	//		printf("ERROR: cannot read file...\n");
-	//		return 1;
-	//	}
-	//	else{
-	//		theta = atof(argv[2]);
-	//		phi = atof(argv[3]);
-	//		std::string dirname = "./Data/cthead/";
-	//		EGSPhant EGS1("test1.egsphant");
-	//		DICOMReader reader((char *)dirname.c_str());
-	//		reader.ReadSample();
-	//		reader.ReadAll();
-	//		printf("Rotating...\n");
-	//		
-	//		reader.Rotate3D(90 - theta,zaxis);
-	//		reader.Rotate3D(270 - phi,xaxis);
-	//		
-	//		printf("Rotation complete...\n");
-	//		printf("converting..\n");
-	//		ConvertDICOMToEGSPhant(&reader,&EGS1);
-	//		printf("file converted...\n");
-	//		EGS1.Write();
-	//		/*printf("Rotating...\n");
-	//		
-	//		printf("Rotation complete...\n");
-	//		printf("Converting second file...\n");
-	//		ConvertDICOMToEGSPhant(&reader,&EGS2);
-	//		printf("Second file Converted");
-	//		EGS2.Write();*/
-
-	//		return 0;
-	//	}
-
-	//}
-
-	//
-	//// Count the command line arguements
-	//if (argc < 4 || argc > 4)
-	//{
-	//	fprintf(stdout, "Wrong number of command line arguements\n");
-	//	fprintf(stdout, "Usage: CTCombine phantom.egsphant epid.egsphant someoutputfile.egsphant\n");
-	//}
-	//else
-	//{
-	//	std::string ct_filename(argv[1]);
-	//	std::string epid_filename(argv[2]);
-	//	std::string output_filename(argv[3]);	
-	//	Combine_EGSPHANT(ct_filename.c_str(), epid_filename.c_str(), output_filename.c_str());
-	//}
-
-
-	//std::string ct_filename = "./Data/Second/cthead.egsphant";
-	//std::string epid_filename = "./Data/Second/EPID_for_cthead.egsphant";	
-	//Combine_EGSPHANT(ct_filename.c_str(), epid_filename.c_str(), output_filename.c_str());
-	//	float deg = atof(argv[1]);
-	//	int slc = atoi(argv[2]);
-
-	//	std::string dirname = "./Data/cthead/";
-		//std::string testfile = "cthead.egsphant";
-		//std::string outfile = "cthead_rotated.egsphant";
-		//printf("Testing rotation...\n");
-		//TestEGSPhantRotate(testfile.c_str(),deg,outfile.c_str());
-	//	ReadDicoms_Test(dirname.c_str(),deg,slc);
-	//}	
 	return 0;
 }
 
