@@ -3,8 +3,8 @@
 
 CC = /usr/bin/g++
 #CC = icpc
-OPTS = -O2 -ffast-math 
-SRC = Main.cpp 
+OPTS =  -O2 -ffast-math
+SRC = Main.cpp ./DICOMParser/DICOMParser.cxx ./DICOMParser/DICOMFile.cxx ./DICOMParser/DICOMAppHelper.cxx
 OBJS = $(SRC:.cpp=.o)
 INC = 
 LIBS = 

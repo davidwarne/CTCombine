@@ -1,26 +1,35 @@
 # Summary
 #---------
 
-  Combining files in the EGSPhant format.
-
-  Currently, version 0.11
+  Rotates Dicom data as indicated a desired angle about a desired isocentre. 
+  Voxelises data and appends EPID data to the file.
 
   Features:
-   Will read two (2) egsphant files, combine them and write out.  No smarts implemented.
-  
-  Changes from 0.1
-	- fixed integer writing to a specified number of characters
+     
+    From Version 0.12 -
+        -Reads DICOM data, and converts to .egsphant using voxel sizes and coordinate limts specified in .inp file
+        -Rotates the data to a geometrically equivalent orientaion for a new gantry angle (as an input)
+        -Translates the isocentre to 0,0,0 and inverts the y axis
+        -Adds EPID data to .egsphant as specified from an EPID spec file (see below)
+        -Pads the volume with air to fill in space between EPID and phantom, and along the edges where the EPID extends
 
-# Author
-#--------
+    From Version 0.11 -
+        -Will read two (2) egsphant files, combine them and write out.  No smarts implemented.
 
-  Mark Dwyer  ( m2.dwyer@qut.edu.au )
+    From Version 0.1 -
+        - fixed integer writing to a specified number of characters
+
+# Authors
+#---------
+
+    Mark Dwyer    ( m2.dwyer@qut.edu.au )
+    David Warne   ( david.warne@qut.edu.au )
 
 # Institution
 #-------------
 
- High Performance Computing and Research Support
- Queensland University of Technology
+    High Preformance Computing and Research Support
+    Queensland University of Technology
 
 # Licenses
 #----------
@@ -33,22 +42,76 @@
 # Package structure :
 #--------------------
 
-  The directory Version_0.1/ is organized as follows :
+  The directory Version_0.12/ is organized as follows :
 
-  - EGSPhant.h                 : The single (header) file of the file format storage.
-  - Main.cpp		       : My dodgy kick off file containing the main()
-  - Makefile  		       : How I like to compile things
-  - README.txt                 : You be readin' it
+    - EGSPhant.h                 : The single (header) file of the file format storage.
+    - DicomReader.h              : Code that reads Dicom data from .dcm files (using DICOMParser), also contains rotation/translation function
+    - Main.cpp		         : My dodgy kick off file containing the main() 
+    - Makefile                   : How I like to compile things
+    - README.txt                 : You be readin' it
+    - DICOMParser/               : contains code that deals with extracting data from dicom files
+    - EPIDexample.txt            : example of the EPID input data format
+    - cthead.inp                 : example of .inp file for voxel conversion
 
-  - documentation/ : Ha Ha Ha haaa (wipes tear from eye) Good one!
-            
+    - documentation/ : Ha Ha Ha haaa (wipes tear from eye) Good one!
 
-# Getting started
+# Getting Started
 #-----------------
 
-  At the command line, just type "make".  This will work on *nix systems.
+    At the command line, just type "make".  This will work on *nix systems.
 
-  To run, "./CTCombine ./Data/Second/cthead.egsphant ./Data/Second/EPID_for_cthead.egsphant output.egsphant"
-   for example.
-------------------------------------------------------------------------------------------------
-------------------------------------------------------------------------------------------------
+    To Merge to .egsphant files:
+       
+         CTCombine -c file1.egsphant file2.egsphant outputfile.egsphant
+    example:
+          CTCombine -c ./cthead.egsphant ./EPID.egsphant ./cthead_and_EPID.egsphant
+    
+   
+To Rotate about a the isocentre to align with a given gantry angle:
+
+        CTCombine -d DicomDataDirectory [-g zeroGantry] [-r desiredGantry] -E EPIDdatafile -inp .inpInputFile -o outputfile
+
+   example:
+        CTCombine -d ./Data/cthead/ -g 270 90 -r 300 90 -E ./EPIDexample.txt -inp ./cthead.inp -o ./cthead.egsphant
+
+Other options:
+
+-i x y z          translates volume to this point to create a new isocentre, any rotation is done about this point
+
+    example:
+         CTCombine -d ./Data/cthead/ -i 0.053 -22.2 0 -g 270 90 -r 300 90 -E ./EPIDexample.txt -inp ./cthead.inp -o ./cthead.egsphant      
+    
+-e dist           specifies the distance (in cm) that the surface of the EPID is to be from the isocentre
+         
+    example:
+         CTCombine -d ./Data/cthead/ -e 59.4 -E ./EPIDexample.txt -inp ./cthead.inp -o ./cthead.egsphant
+    or
+          CTCombine -e 59.4 -c ./cthead.egsphant ./EPID.egsphant ./cthead_and_EPID.egsphant
+
+# File Format Description
+#-------------------------
+
+EPID Specification file:
+
+xdimesion,zdimension //layer surface area
+numberOfMaterials    // count of materials in both CT and EPID
+material1name        //List of material names
+material2name
+material3name
+.
+.
+.
+materialNname       //end of list
+numberOfLayers      //count of EPID layers 
+materialNumber1 materialdensity1 thickness1 //List of layer information
+materialNumber2 materialdensity2 thickness2
+.
+.
+.
+materialNumberN materialdensityN thicknessN
+
+- for an example see the EPIDexample.txt file
+
+INP file (you already know this...): see cthead.inp 
+
+NOTE: unexpected behaviour may arise from setting bounds that exceed the data bounds themselves
