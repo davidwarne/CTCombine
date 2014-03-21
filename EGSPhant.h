@@ -28,6 +28,8 @@ template <class T> const T& max ( const T& a, const T& b ) {
 
 const float PI = 3.14159265358979323846;
 
+
+
 namespace EGS
 {
 	/**
@@ -50,6 +52,7 @@ namespace EGS
 			void FlipY();
 			int WriteInteger(FILE *file, int num, int length);
 			int RotateAboutZaxis(float theta);
+			int RemoveCushion(char cushMedium,char airMedium,char skinMedium);
 			int Rotate3D(float theta, float* axis);
 			int PrintStats(void);
 
@@ -773,7 +776,7 @@ namespace EGS
 		std::string outputfile = "test_rotate.txt";
 		WriteRotatedData(outputfile.c_str(),voxelMediumRotated,voxelDensityRotated);
 
-	}
+	};
 
 	/*
 	* shifts the grid from by -(x,y,z)
@@ -782,12 +785,6 @@ namespace EGS
 
 		int i;
 
-		if(!flag)//no translation
-		{
-			x=0;
-			y=0;
-			z=0;
-		}
 		//point is to be our new origin
 		for(i=0;i<=xSize;i++)
 			xBoundaries[i] -= x;
@@ -796,7 +793,71 @@ namespace EGS
 		for(i=0;i<=zSize;i++)
 			zBoundaries[i] -= z;
 		
-	}
+	};
+
+	/* Removes the cushion using a very simple (and possibly primitive) algorithm
+	 * basically recognises that the cushion is simply a contiguous body of non-air voxels
+	 * out side the skin, only a prototype, wont be accurate for very small voxel sizes (were the skin
+	 * could be more than 1 voxel thick),  
+	 * 
+	 */
+	int EGSPhant::RemoveCushion(char cushMedium,char airMedium,char skinMedium)
+	{
+		int i,j,k; // ah yes, our friendly loop pointers again
+		
+		char boundary[8];
+		short t;
+		bool result=true;
+		// for each voxel in the volume
+		for (k=1;k<zSize-1;k++)
+		{
+			for (j=1;j<ySize-1;j++)
+			{
+				for (i=1; i<xSize-1; i++)
+				{
+					result = true;
+					
+					if(voxelMedium[k][j][i] == cushMedium)
+					{
+						// get the surrounding voxels (the this slice)
+						boundary[0] = voxelMedium[k][j-1][i-1];
+						boundary[1] = voxelMedium[k][j-1][i];
+						boundary[2] = voxelMedium[k][j-1][i+1];
+						boundary[3] = voxelMedium[k][j][i-1];
+						boundary[4] = voxelMedium[k][j][i+1];
+						boundary[5] = voxelMedium[k][j+1][i-1];
+						boundary[6] = voxelMedium[k][j+1][i];
+						boundary[7] = voxelMedium[k][j+1][i+1];
+					
+						t=0;
+						// check if they are all air of cushion
+						while (result && t<8)
+						{
+							if(boundary[t] == airMedium || boundary[t] == cushMedium || boundary[t] == skinMedium)
+							{
+								result = true;
+							}
+							else
+							{
+								result = false;
+							}
+							t++;
+						}
+						// if this point is surrounded by cushion and air then we clear it 
+						if (result)
+						{
+							voxelMedium[k][j][i] = airMedium;
+							// is always air
+							voxelDensity[k][j][i] = voxelDensity[0][0][0];
+						}
+						//printf("medium: %c\n",voxelMedium[k][j][i]);
+					}
+				}
+			}
+		}
+		//printf("%d %d %d",i,j,k);
+
+	};
 
 	void EGSPhant::FlipY(){
 

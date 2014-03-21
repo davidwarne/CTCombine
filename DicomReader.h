@@ -56,8 +56,9 @@ namespace DICOM
 			void Rotate3D(float theta, float* axis,float ox,float oy,float oz,bool flag);
 			void FlipAxis(float* axis, int length1);
 			void Translate(float x, float y, float z,bool flag);
-			int Select_Region(float xmin,float xmax,float ymin, float ymax, float zmin, float zmax);
+			int Select_Region(float xmin,float xmax,float ymin, float ymax, float zmin, float zmax,bool flag);
 			void WriteTestFile();
+			void GetIsoCentre(float* x,float* y,float* z);
 
 		public:
 			char* directory;
@@ -66,7 +67,7 @@ namespace DICOM
 			int height;
 			int width;
 			float *spacing;
-
+			float mx,my,mz; // to store the original mid-point
 			// Data type
 			// 0 - Float
 			// 1 - Unsigned Char
@@ -78,7 +79,7 @@ namespace DICOM
 			unsigned char ***data_uc;
 			unsigned short ***data_us;
 			short ***data_s;
-
+			float offset;
 			int numSlices;
 			float* xCoords; 
 		    float* yCoords;
@@ -164,7 +165,9 @@ namespace DICOM
     	    	
 		helper->RegisterPixelDataCallback(parser);
     	parser->ReadHeader();
-
+ 
+		offset = helper->GetRescaleOffset();
+	
 		void* imgData = NULL;
     	DICOMParser::VRTypes dataType;
     	unsigned long imageDataLength;
@@ -273,7 +276,9 @@ namespace DICOM
 		unsigned long imageDataLength;
 		
 		float* xyzStart;
-
+		short offset_s;
+		unsigned short offset_us;
+		unsigned char offset_uc;
 		short *iData_s;
 		unsigned short *iData_us;
 		unsigned char *iData_uc;
@@ -283,39 +288,44 @@ namespace DICOM
 
 		if (imageDataType == 2)
 		{
+
+			
+
 			for (k = 0; k<numSlices; k++)
 			{
 				helper->Clear();
-    			parser->ClearAllDICOMTagCallbacks();
+			    parser->ClearAllDICOMTagCallbacks();
 				sprintf(filename, "%s%s", directory, (char *)data_files[k].c_str());
-    			parser->OpenFile(filename);
-    			helper->RegisterCallbacks(parser);
+   				parser->OpenFile(filename);
+   				helper->RegisterCallbacks(parser);
 				helper->RegisterPixelDataCallback(parser);
-    			parser->ReadHeader();
-
+				parser->ReadHeader();
 				imgData = NULL;
+				
 				helper->GetImageData(imgData, dataType, imageDataLength);
 				xyzStart = helper->GetImagePositionPatient();
 				
 				zCoords[k] = xyzStart[2];
 				// short
 				iData_s = (short *)imgData;
+				offset_s = (short)offset;
 				for (j = 0; j<height; j++)
 				{
 					yCoords[j] = xyzStart[1] + j*spacing[1];
 					for (i = 0; i<width; i++)
 					{
-						if (iData_s[j*width+i]>0){
-							data_s[k][j][i] = iData_s[j*width+i];
-						}
-						else{
-							data_s[k][j][i]=0;
-						}
+						
+						data_s[k][j][i] = iData_s[j*width+i] - offset_s;
+						
 						xCoords[i] = xyzStart[0] + i*spacing[0];		
 					}
 					
 				}
 			}
+			//get the midpoint of the grid 	
+			mx = xCoords[0] + (xCoords[width-1] - xCoords[0])*0.5;
+			my = yCoords[0] + (yCoords[height-1] - yCoords[0])*0.5;
+			mz = zCoords[0] + (zCoords[numSlices-1] - zCoords[0])*0.5;
 			
 		}
 		else if (imageDataType = 1)
@@ -775,7 +785,8 @@ namespace DICOM
 		float s,r,t;                    // to store interpolation weights
 		float x,y,z;                    // coordinate of original point
 		float xr,yr,zr;                 // coordinate of rotated point
-		float nx,ny,nz;                 // the nomalised vector components of the axis of rotaion
+		float nx,ny,nz;                 // the nomalised vector components of the axis of rotation
+		float tx,ty,tz;                 // temps to hold tho original centre (we need it for bounds checking)
 		short*** newData_s;             // for short data
 		unsigned char*** newData_uc;    // for unsigned char data
 		unsigned short*** newData_us;   // for unsigned short data
@@ -815,6 +826,7 @@ namespace DICOM
 				newData_s[k][j] = new short[width];
 			}
 		}
+		//printf("volume dimensions: %d %d %d",width,height,numSlices);
 		
 		// convert to radians
 		rads = (theta*PI)/180;
@@ -837,15 +849,24 @@ namespace DICOM
 		ny = axis[1];
 		nz = axis[2];
 
+		tx = mx;
+		ty = my;
+		tz = mz;
 
-		//get the midpoint of rotation if none has been specified
+		//get the midpoint of the grid 	
+		mx = xCoords[0] + (xCoords[width-1] - xCoords[0])*0.5;
+		my = yCoords[0] + (yCoords[height-1] - yCoords[0])*0.5;
+		mz = zCoords[0] + (zCoords[numSlices-1] - zCoords[0])*0.5;
+
 		if (!flag)
 		{
-			ox = (xCoords[0] + xCoords[width-1])*0.5;
-			oy = (yCoords[0] + yCoords[height-1])*0.5;
-			oz = (zCoords[0] + zCoords[numSlices-1])*0.5;
+			ox = mx;
+			oy = my;
+			oz = mz;
 		}
 
+		//printf("(%f %f) (%f %f) (%f %f)\n",xCoords[0],xCoords[width-1],yCoords[0],yCoords[height-1],zCoords[0],zCoords[numSlices-1]);
+		//printf("%f %f %f",mx,my,mz);
 		// calculate the distance between grid nodes (assumes regular grid)
 		xStep = (xCoords[0] - xCoords[width-1])/(width-1);
 		yStep = (yCoords[0] - yCoords[height-1])/(height-1);
@@ -861,57 +882,75 @@ namespace DICOM
 			{
 				for (j=0; j<height; j++)
 				{
-						for (i=0; i<width; i++)
-						{
-							// initialise data point
-							newData_s[k][j][i] =0;
+					for (i=0; i<width; i++)
+					{
+						// initialise data point
+						newData_s[k][j][i] = 0;
 
-							// store the coordinates at this point
-							x = xCoords[i];
-							y = yCoords[j];
-							z = zCoords[k];
+						// store the coordinates at this point
+						x = xCoords[i];
+						y = yCoords[j];
+						z = zCoords[k];
 
-							//apply general 3D rotation matrix to this point (can be improved but this is the standard from)
-							xr = (1+(1-costheta)*(nx*nx-1))*(x-ox)+(-nz*sintheta+(1-costheta)*nx*ny)*(y-oy)+(ny*sintheta+(1-costheta)*nx*nz)*(z-oz)+ox;
-							yr = (nz*sintheta+(1-costheta)*nx*ny)*(x-ox)+(1+(1-costheta)*(ny*ny-1))*(y-oy)+(-nx*sintheta+(1-costheta)*ny*nz)*(z-oz)+oy;
-							zr = (-ny*sintheta+(1-costheta)*nx*nz)*(x-ox)+(nx*sintheta+(1-costheta)*ny*nz)*(y-oy)+(1+(1-costheta)*(nz*nz-1))*(z-oz)+oz;
-							//TODO: add special cases for rotaion about coordinate axes
+						//apply general 3D rotation matrix, and translate to the midpoint  
+						xr = (1+(1-costheta)*(nx*nx-1))*(x-ox)+(-nz*sintheta+(1-costheta)*nx*ny)*(y-oy)+(ny*sintheta+(1-costheta)*nx*nz)*(z-oz)+mx;
+						yr = (nz*sintheta+(1-costheta)*nx*ny)*(x-ox)+(1+(1-costheta)*(ny*ny-1))*(y-oy)+(-nx*sintheta+(1-costheta)*ny*nz)*(z-oz)+my;
+						zr = (-ny*sintheta+(1-costheta)*nx*nz)*(x-ox)+(nx*sintheta+(1-costheta)*ny*nz)*(y-oy)+(1+(1-costheta)*(nz*nz-1))*(z-oz)+mz;
+						//TODO: add special cases for rotaion about coordinate axes
+
+						// now we shift the the point reletive to the centre of our grid
 					
-							//now get the indices of the nearest grid point 
-								indx = (int)floor((xCoords[0] - xr)*xStepinv);
-								indy = (int)floor((yCoords[0] - yr)*yStepinv);
-								indz = (int)floor((zCoords[0] - zr)*zStepinv);
+						//now get the indices of the nearest grid point 
+						indx = (int)floor((xCoords[0] - xr)*xStepinv);
+						indy = (int)floor((yCoords[0] - yr)*yStepinv);
+						indz = (int)floor((zCoords[0] - zr)*zStepinv);
 
-							//check the point in within the grid bounds
-							if(indx >=0 && indx < (width-1) &&  indy >=0 && indy < (height-1) && indz >=0 && indz < (numSlices-1)){
+						//check the point in within the grid bounds
+						if(indx >=0 && indx < (width-1) &&  indy >=0 && indy < (height-1) && indz >=0 && indz < (numSlices-1)){
 
-								//use trilinear interpolation to get the data value for this node
-								s = xCoords[indx] - xr;
-								r = yCoords[indy] - yr;
-								t = zCoords[indz] - zr;
-								//printf("%f %f %f\n",s,r,t);
+							//use trilinear interpolation to get the data value for this node
+							s = xCoords[indx] - xr;
+							r = yCoords[indy] - yr;
+							t = zCoords[indz] - zr;
+							//printf("%f %f %f\n",s,r,t);
 
-								sum =0;
+							sum =0;
 
-								sum += (1-t)*(1-r)*(1-s)*((float)data_s[indz][indy][indx]);
-								sum += (1-t)*(1-r)*(s)*((float)data_s[indz][indy][indx+1]);
-								sum += (t)*(1-r)*(1-s)*((float)data_s[indz+1][indy][indx]);
-								sum += (1-t)*(r)*(1-s)*((float)data_s[indz][indy+1][indx]);
-								sum += (1-t)*(r)*(s)*((float)data_s[indz][indy+1][indx+1]);
-								sum += (t)*(1-r)*(s)*((float)data_s[indz+1][indy][indx+1]);
-								sum += (t)*(r)*(1-s)*((float)data_s[indz+1][indy+1][indx]);
-								sum += (t)*(r)*(s)*((float)data_s[indz+1][indy+1][indx+1]);
-					
-
-								newData_s[k][j][i] = (short)round(sum);
+							sum += (1-t)*(1-r)*(1-s)*((float)data_s[indz][indy][indx]);
+							sum += (1-t)*(1-r)*(s)*((float)data_s[indz][indy][indx+1]);
+							sum += (t)*(1-r)*(1-s)*((float)data_s[indz+1][indy][indx]);
+							sum += (1-t)*(r)*(1-s)*((float)data_s[indz][indy+1][indx]);
+							sum += (1-t)*(r)*(s)*((float)data_s[indz][indy+1][indx+1]);
+							sum += (t)*(1-r)*(s)*((float)data_s[indz+1][indy][indx+1]);
+							sum += (t)*(r)*(1-s)*((float)data_s[indz+1][indy+1][indx]);
+							sum += (t)*(r)*(s)*((float)data_s[indz+1][indy+1][indx+1]);
 							
-
-							}
+							newData_s[k][j][i] = (short)round(sum);
 						}
 					}
 				}
-				data_s = newData_s;
 			}
+			data_s = newData_s;
+		}
+
+		// now we just shift the coordinates so they are aligned with the
+		for (i=0; i<width; i++)
+		{
+			xCoords[i] = xCoords[i] - mx + ox;
+		}
+		for (j=0; j< height; j++)
+		{
+			yCoords[j] = yCoords[j] - my + oy;
+		}
+		for (k=0 ; k<numSlices; k++)
+		{
+		    zCoords[k] = zCoords[k] - mz + oz;
+		}
+
+		mx = tx;
+		my = ty;
+		mz = tz;
+		
 	};
 
 	void FlipAxis(float* Axis, int Length){
@@ -1020,47 +1059,69 @@ namespace DICOM
 	};
 
 	// removes all data outside the given bounds
-	int DICOMReader::Select_Region(float xmin,float xmax,float ymin, float ymax, float zmin, float zmax){
+	int DICOMReader::Select_Region(float xmin,float xmax,float ymin, float ymax, float zmin, float zmax,bool flag){
 
 		short*** temp;
-		float xStep,yStep,zStep;
+		float xStep,yStep,zStep,ox,oy,oz;
 		int xStart,yStart,zStart;
 		int xSize,ySize,zSize;
 		float* xtemp;
 		float* ytemp;
 		float* ztemp;
 		int k,j,i;
+		float xminNew,xmaxNew,yminNew,ymaxNew,zminNew,zmaxNew;
+
+		if(!flag)
+		{
+			ox = mx;
+			oy = my;
+			oz = mz;
+		}
 
 		xStep = (xCoords[0] - xCoords[width-1])/(width-1);
 		yStep = (yCoords[0] - yCoords[height-1])/(height-1);
 		zStep = (zCoords[numSlices-1]-zCoords[0])/(numSlices-1);
 
+		//get the midpoint of the grid 	
+		ox = xCoords[0] + (xCoords[width-1] - xCoords[0])*0.5;
+		oy = yCoords[0] + (yCoords[height-1] - yCoords[0])*0.5;
+		oz = zCoords[0] + (zCoords[numSlices-1] - zCoords[0])*0.5;
+		//printf("old new %f %f\n",mx,ox);
+
+		// shift the boudaries to be in line with new coordinates
+		xminNew = xmin - mx + ox;
+		xmaxNew = xmax - mx + ox;
+		yminNew = ymin - my + oy;
+		ymaxNew = ymax - my + oy;
+		zminNew = zmin - mz + oz;
+		zmaxNew = zmax - mz + oz;
+
 		// just a bit of bounds checking
-		if (xmin < xCoords[0] || xmax > xCoords[width-1] || xmin > xmax)
+		if (xminNew < xCoords[0] || xmaxNew > xCoords[width-1])
 		{
 			printf("ERROR: Selected x region exceeds data range\n");
-			printf("Selected Range was (%f %f)\n",xmin,xmax);
-			printf("Data Range is (%f %f)\n",xCoords[0],xCoords[width-1]);
+			printf("Selected Range was (%f %f)\n",xminNew,xmaxNew);
+			printf("Data Range is (%f %f)\n",xCoords[0]+mx-ox,xCoords[width-1]+mx-ox);
 			return 1;
 		}
-		if (ymin < yCoords[0] || ymax > yCoords[height-1] || ymin > ymax)
+		if (yminNew < yCoords[0] || ymaxNew > yCoords[height-1])
 		{
 			printf("ERROR: Selected y region exceeds data range\n");
 			printf("Selected Range was (%f %f)\n",ymin,ymax);
-			printf("Data Range is (%f %f)\n",yCoords[0],yCoords[height-1]);
+			printf("Data Range is (%f %f)\n",yCoords[0]+my-oy,yCoords[height-1]+my-oy);
 			return 1;
 		}
-		if (zmin < zCoords[numSlices-1] || zmax > zCoords[0] || zmin > zmax)
+		if (zminNew < zCoords[numSlices-1] || zmaxNew > zCoords[0])
 		{
 			printf("ERROR: Selected z region exceeds data range\n");
 			printf("Selected Range was (%f %f)\n",zmin,zmax);
-			printf("Data Range is (%f %f)\n",zCoords[numSlices-1],zCoords[0]);
+			printf("Data Range is (%f %f)\n",zCoords[numSlices-1]+mz-oz,zCoords[0]+mz-oz);
 			return 1;
 		}
 		//initialise memory for selected region
-		xSize = (int)floor((xmin - xmax)/xStep);
-		ySize = (int)floor((ymin - ymax)/yStep);
-		zSize = (int)floor((zmin - zmax)/zStep);
+		xSize = (int)floor((xminNew - xmaxNew)/xStep);
+		ySize = (int)floor((yminNew - ymaxNew)/yStep);
+		zSize = (int)floor((zminNew - zmaxNew)/zStep);
 
 		temp = new short**[zSize];
 		for (k=0;k<zSize;k++){
@@ -1074,27 +1135,26 @@ namespace DICOM
 		ytemp = new float[ySize];
 		ztemp = new float[zSize];
 
-		xStart = (int)floor(fabs((xCoords[0] - xmin)/xStep));
-		yStart = (int)floor(fabs((yCoords[0] - ymin)/yStep));
-		zStart = (int)floor(fabs((zCoords[numSlices-1] - zmin)/zStep));
+		xStart = (int)floor(fabs((xCoords[0] - xminNew)/xStep));
+		yStart = (int)floor(fabs((yCoords[0] - yminNew)/yStep));
+		zStart = (int)floor(fabs((zCoords[numSlices-1] - zminNew)/zStep));
 		//printf("%d %d %d\n",xStart,yStart,zStart);
 
 		for (k=0;k<zSize;k++){
 			for (j=0;j<ySize;j++){
 				for (i=0;i<xSize;i++){
 					temp[k][j][i] = data_s[zStart+k][yStart+j][xStart+i];
-					xtemp[i] = xCoords[i];
+					xtemp[i] = xCoords[xStart+i];
 				}
-				ytemp[j] = yCoords[j];
+				ytemp[j] = yCoords[yStart+j];
 			}
-			ztemp[k] = zCoords[k];
+			ztemp[k] = zCoords[zStart+k];
 		}
 
 		width = xSize;
 		height = ySize;
 		numSlices = zSize;
-		printf("%d %d %d\n",width,height,numSlices);
-
+		//printf("%d %d %d\n",width,height,numSlices);
 
 		data_s = temp;
 		xCoords = xtemp;
@@ -1102,6 +1162,14 @@ namespace DICOM
 		zCoords = ztemp;
 
 		return 0;
+	};
+
+	// simple... returns the midpoint (assumed Iso-centre unless specified by the user)
+	void DICOMReader::GetIsoCentre(float* x,float* y,float* z)
+	{
+		*x = xCoords[0] + (xCoords[width-1] - xCoords[0])*0.5;
+		*y = yCoords[0] + (yCoords[height-1] - yCoords[0])*0.5;
+		*z = zCoords[0] + (zCoords[numSlices-1] - zCoords[0])*0.5;
 	};
 
 } //namespace DICOM

@@ -365,6 +365,16 @@ public:
     return this->SliceNumber;
     }
 
+  float GetRescaleOffset()
+  {
+	  return this->RescaleOffset;
+  }
+
+  float GetRescaleSlope()
+  {
+	  return this->RescaleSlope;
+  }
+
   /** Clear the internal databases. This will reset the internal
    * databases that are grouping filenames based on SeriesUID's and
    * ordering filenames based on image locations. */

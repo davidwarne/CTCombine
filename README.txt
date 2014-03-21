@@ -6,6 +6,15 @@
 
   Features:
     
+    Version 0.16 - 
+       - density data conversion is now more powerful, the user may define there own transfer function for 
+         CT to density (NOTE: as a result of this modification the format of the .inp file has changed, see below)
+       - x and z cooridnates are set in increasing order for use with Dosxyz
+       - Bug with EPID distance is now fixed
+       - problem with converting CT values to densities is now removed by implementing the use of the 
+         Dicom RescaleOffset value (useful, the poor phantom now has a brain)
+       - the selected isocentre is now always set in the centre of the zx plain (0,100,0) for Dosxyz
+    
     Version 0.15 -
        - Y axis now shifted such that y<100 is above the isocentre and y>100 is below
 
@@ -127,23 +136,26 @@ materialNumberN materialdensityN thicknessN
 
 INP file (you already know this...): 
 
-DataType                                                     // only DICOM is handled
-directory                                                    // the folder containing the data files
-xMin, xMax, yMin, yMax, zMin, zMax                           // boundaries of selected data region
-xVoxeldimension, yVoxeldimension,zVoxeldimension             //size of Voxel Dimensions in cm
-numberOfMaterials                                            // Count of Materials in CT
-materialName1                                                // material and conversion data
-CTUpperBound1,DensityLowerBound1,DensityUpperBound1, estepe1
+DataType                                                                  // only DICOM is handled
+directory                                                                 // the folder containing the data files
+xMin, xMax, yMin, yMax, zMin, zMax                                        // boundaries of selected data region
+xVoxeldimension, yVoxeldimension,zVoxeldimension                          //size of Voxel Dimensions in cm
+numberOfMaterials                                                         // Count of Materials in CT
+numberOfControlPoints1 numberOfControlPoints2 ... numberOfControlPointsN  // control point numbers
+materialName1                                                             // material and conversion data
+CT11,Density11,CT12,Density12,...,CT1N,Density1N, estepe1                 //list of CT,Density pairs forming the transfer function followed by estepe
 materialName2                                                
-CTUpperBound2,DensityLowerBound2,DensityUpperBound2, estepe2
+CT21,Density21,CT22,Density22,...,CT2N,Density2N, estepe2
 .
 .
 .
 materialNameN                                                
-CTUpperBoundN,DensityLowerBoundN,DensityUpperBoundN, estepeN
+CTN1,DensityN1,CTN2,DensityN2,...,CTNN,DensityNN, estepeN
 
 
 # Known Issues
 #-----------------
 
  1. At the moment only DICOM data of type Short is supported
+ 2. rotations in which points are rotated outside of the original data volume are removed, I have a feeling 
+    that this is not the best way to go.
