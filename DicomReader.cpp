@@ -267,10 +267,13 @@ namespace DICOM
 						data_s[k][j][i] = ((short)slope)*iData_s[j*width+i] - (short)offset;
                        
                         //the coordinates in room coordinates
-						xCoords[k][j][i] = XdirCosine[0]*((float)i)*spacing[0] + YdirCosine[0]*((float)j)*spacing[1] + xyzStart[0];
-						yCoords[k][j][i] = XdirCosine[1]*((float)i)*spacing[0] + YdirCosine[1]*((float)j)*spacing[1] + xyzStart[1];
-						zCoords[k][j][i] = XdirCosine[2]*((float)i)*spacing[0] + YdirCosine[2]*((float)j)*spacing[1] + xyzStart[2];
-					
+					//	xCoords[k][j][i] = XdirCosine[0]*((float)i)*spacing[0] + YdirCosine[0]*((float)j)*spacing[1] + xyzStart[0];
+					//	yCoords[k][j][i] = XdirCosine[1]*((float)i)*spacing[0] + YdirCosine[1]*((float)j)*spacing[1] + xyzStart[1];
+					//	zCoords[k][j][i] = XdirCosine[2]*((float)i)*spacing[0] + YdirCosine[2]*((float)j)*spacing[1] + xyzStart[2];
+						//TODO: fix this crappy hack to avoid directional cosine issues
+						xCoords[k][j][i] =((float)i)*spacing[0] + xyzStart[0];
+						yCoords[k][j][i] = ((float)j)*spacing[1] + xyzStart[1];
+						zCoords[k][j][i] = xyzStart[2];
 					    // updata bounds info
 						if (xCoords[k][j][i] < xlims[0])
 						{
@@ -302,7 +305,6 @@ namespace DICOM
 					
 				}
 			}
-			
 			//get the midpoint of the grid 	
 			mx = xlims[0] + (xlims[1] - xlims[0])*0.5;
 			my = ylims[0] + (ylims[1] - ylims[0])*0.5;
@@ -518,6 +520,8 @@ namespace DICOM
 			mx = xlims[0] + (xlims[1] - xlims[0])*0.5;
 			my = ylims[0] + (ylims[1] - ylims[0])*0.5;
 			mz = zlims[0] + (zlims[1] - zlims[0])*0.5;
+			
+			
 		}
 		else
 		{
@@ -695,7 +699,7 @@ namespace DICOM
 					yr = (nz*sintheta+(1-costheta)*nx*ny)*(x-ox)+(1+(1-costheta)*(ny*ny-1))*(y-oy)+(-nx*sintheta+(1-costheta)*ny*nz)*(z-oz)+oy;
 					zr = (-ny*sintheta+(1-costheta)*nx*nz)*(x-ox)+(nx*sintheta+(1-costheta)*ny*nz)*(y-oy)+(1+(1-costheta)*(nz*nz-1))*(z-oz)+oz;
 					//TODO: add special cases for rotaion about coordinate axes
-					
+				
 					xCoords[k][j][i] = xr;
 					yCoords[k][j][i] = yr;
 					zCoords[k][j][i] = zr;
@@ -846,6 +850,9 @@ namespace DICOM
 	/**Select_Region: removes all data outside the given bounds
 	 *
 	 * This resizes the data grid
+	 *
+	 * TODO: there is a bug in this function, it assumes that the directional 
+	 *       cosines of the data set are (1,0,0) and (0,1,0)
 	 */
 	int DICOMReader::Select_Region(float xmin,float xmax,float ymin, float ymax, float zmin, float zmax)
 	{
@@ -857,7 +864,7 @@ namespace DICOM
 		int newdimx = (int)round(((xmax-xmin)/(xlims[1]-xlims[0]))*width);
 		int newdimy = (int)round(((ymax-ymin)/(ylims[1]-ylims[0]))*height);
 		int newdimz = (int)round(((zmax-zmin)/(zlims[1]-zlims[0]))*numSlices);
-		
+	
 		if (newdimx >= width){
 			newdimx = width;
 		}
@@ -893,6 +900,13 @@ namespace DICOM
 		            newxCoords[k][j] = new float[newdimx];
 		            newyCoords[k][j] = new float[newdimx];
 		            newzCoords[k][j] = new float[newdimx];
+		            for (i=0;i<newdimx;i++){
+		            	new_data_s[k][j][i] = 0;
+		            	newxCoords[k][j][i] = 0.0;
+		            	newyCoords[k][j][i] = 0.0;
+		            	newzCoords[k][j][i] = 0.0;
+		            	
+		            }
 		        }
 		    }
 		    
@@ -930,26 +944,26 @@ namespace DICOM
 		            u++;
 		        }
 		    }
-		    
+		   
 		    // deallocate the old data
 		    for (k=0;k<numSlices;k++)
 		    {
 		        for (j=0;j<height;j++)
 		        {
-		            delete xCoords[k][j];
-		            delete yCoords[k][j];
-		            delete zCoords[k][j];
-		            delete data_s[k][j];
+		            delete [] xCoords[k][j];
+		            delete [] yCoords[k][j];
+		            delete [] zCoords[k][j];
+		            delete [] data_s[k][j];
 		        }
-		        delete xCoords[k];
-		        delete yCoords[k];
-		        delete zCoords[k];
-		        delete data_s[k];
+		        delete [] xCoords[k];
+		        delete [] yCoords[k];
+		        delete [] zCoords[k];
+		        delete [] data_s[k];
 		    }
-		    delete xCoords;
-		    delete yCoords;
-		    delete zCoords;
-		    delete data_s;
+		    delete [] xCoords;
+		    delete [] yCoords;
+		    delete [] zCoords;
+		    delete [] data_s;
 		    
 		    // now point to the new data
 		    data_s = (short***) new_data_s;

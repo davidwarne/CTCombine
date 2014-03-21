@@ -1,4 +1,4 @@
-CTCombine Version 0.19
+CTCombine Version 0.195
 
 # Summary
 #---------
@@ -30,7 +30,7 @@ CTCombine Version 0.19
 # Package structure :
 #--------------------
 
-  The directory Version_0.18/ is organized as follows :
+  The directory Version_0.195/ is organized as follows :
 
     - EGSPhant.h                 : The single (header) file of the file format storage.
     - DicomReader.h              : Code that reads Dicom data from .dcm files (using DICOMParser), also contains rotation/translation function
@@ -125,6 +125,7 @@ CTN1,DensityN1,CTN2,DensityN2,...,CTNN,DensityNN, estepeN
 #--------
 
   Features:
+  	
   	Version 0.19 - 
   		- Output reporting updated to be cleaner and more readable.
   		- Some issues with remapping mesh from selection region are resolved.
@@ -165,4 +166,10 @@ CTN1,DensityN1,CTN2,DensityN2,...,CTNN,DensityNN, estepeN
 
     From Version 0.1 -
 		- fixed integer writing to a specified number of characters
-
+		
+# Known Issues
+--------------
+Version 0.195 - 
+  		- error revealed with region selection for datasets using directional cosines
+  		  other than (1,0,0), (0,1,0)... dodgy hack for signed short data sets
+  		  has been implemented, but needs to be fixed properly. 

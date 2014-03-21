@@ -8,6 +8,7 @@
  * Summary:
  *    Makes use of DicomReader and EGSPhant objects to re-orientate and convert data from DICOM to EGSPhant format.
  *    also attaches EPID Data
+ *
  */
 
 
@@ -28,7 +29,7 @@ using namespace DICOM;
 #define DEFAULT_VOXEL_SIZE 0.5
 #define BUFFER_SIZE 255
 #define AIRDENSE 0.001
-#define VERSION 0.19
+#define VERSION 0.195
 #define HITS_MAX 100
 
 /* Globals to storge input argument and file read data
@@ -320,6 +321,7 @@ void Combine_EGSPHANT(const char *ct_filename, const char *epid_filename, const 
 			}
 		}
 	
+
 		for (j = 0; j<epid_data.ySize; j++)
 		{
 			for (i = 0; i<epid_data.xSize; i++)
@@ -390,7 +392,7 @@ void ConvertDICOMToEGSPhant(DICOMReader* Dicom,EGSPhant* EGS)
 	EGS->ySize = (int)round(((fabs(Dicom->ylims[0] - Dicom->ylims[1])*rescale))/vy)+airPadding+EPIDVoxels;
 	EGS->zSize = (int)round(EPIDz/vz); // z dimesion of EPID
   
- 	// print out some grid stats
+  	// print out some grid stats
     xR = EGS->xSize/vx;
     yR = EGS->ySize/vy;
     zR = EGS->zSize/vz;
@@ -430,7 +432,7 @@ void ConvertDICOMToEGSPhant(DICOMReader* Dicom,EGSPhant* EGS)
 			}
 		}
 	}
-	
+
 	// now just write the boundary points (we can just calculate 'em using the start coords and voxel dimensions)
 	for (i=0;i<=EGS->xSize;i++)
 	{
@@ -1193,7 +1195,7 @@ int main(int argc, char* argv[])
 		}
 		
 		PrintRotationData();
-			
+		
 		//make rotation from zero gantry angle to the new gantry angle 
 		printf("\nRotating To new gantry angle...");
 		DICOM.Rotate3D(-Z_gantry[0] + theta,zaxis,ix*scaleFactor,iy*scaleFactor,iz*scaleFactor);
