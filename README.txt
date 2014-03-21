@@ -6,6 +6,9 @@
 
   Features:
 
+    Version 0.14 -
+       - volume extended laterally to fully include the EPID
+
     Version 0.13 -
         - Input validation has been implemented
         - some minor bug fixes 

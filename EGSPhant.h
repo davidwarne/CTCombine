@@ -277,7 +277,7 @@ namespace EGS
 			{
 				for (i = 0; i<xSize; i++)
 				{		
-					fprintf(file, "%f", voxelDensity[k][j][i]);
+					fprintf(file, "%f ", voxelDensity[k][j][i]);
 					if (i%5 == 0 && i!=0)
 						fprintf(file, "\n");
 				}

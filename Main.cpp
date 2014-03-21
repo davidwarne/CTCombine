@@ -26,7 +26,7 @@ using namespace EGS;
 using namespace DICOM;
 
 #define AIRDENSE 0.001
-#define VERSION 0.13
+#define VERSION 0.14
 
 template<class T>
 void byteswap(T* t)
@@ -198,7 +198,7 @@ void Combine_EGSPHANT(const char *ct_filename, const char *epid_filename, const 
 	}
 
 	// the column in which the CT data starts 
-	int dataStart = (int)floor((epid_data.xSize - ct_data.xSize)/2);
+	int xdataStart = (int)floor((epid_data.xSize - ct_data.xSize)/2);
 	
 	// Start Initialising
 	for (k = 0; k<combine.zSize; k++)
@@ -208,9 +208,9 @@ void Combine_EGSPHANT(const char *ct_filename, const char *epid_filename, const 
 			for (i = 0; i<epid_data.xSize; i++)
 			{
 				//only add the data within its region
-				if (i>=dataStart && i<(ct_data.xSize+dataStart))
+				if (i>=xdataStart && i<(ct_data.xSize+xdataStart))
 				{
-					combine.voxelMedium[k][j][i] = ct_data.voxelMedium[k][j][i-dataStart];
+					combine.voxelMedium[k][j][i] = ct_data.voxelMedium[k][j][i-xdataStart];
 				}
 				else
 				{
@@ -261,9 +261,9 @@ void Combine_EGSPHANT(const char *ct_filename, const char *epid_filename, const 
 		{
 			for (i = 0; i<ct_data.xSize; i++)
 			{
-				if (i>=dataStart && i<(ct_data.xSize+dataStart))
+				if (i>=xdataStart && i<(ct_data.xSize+xdataStart))
 				{
-					combine.voxelDensity[k][j][i] = ct_data.voxelDensity[k][j][i-dataStart];
+					combine.voxelDensity[k][j][i] = ct_data.voxelDensity[k][j][i-xdataStart];
 				}
 				else
 				{
@@ -311,7 +311,7 @@ void ConvertDICOMToEGSPhant(DICOMReader* Dicom,EGSPhant* EGS){
 	
 	float total,CTavg;            // used to calculate the voxel category
 	float lowerBound;
-	int nonZero,dataStart;
+	int nonZero,xdataStart,zdataStart;
 	
 	unsigned w;                   //loop counter that we also do some bit-wise stuff with
 	
@@ -339,12 +339,13 @@ void ConvertDICOMToEGSPhant(DICOMReader* Dicom,EGSPhant* EGS){
 	}
 
 	// get the number of columns befor data starts
-	dataStart = (int)floor(((EPIDx - fabs(Dicom->xCoords[0] - Dicom->xCoords[Dicom->width -1])*rescale)/vx)*0.5 );
+	xdataStart = (int)floor(((EPIDx - fabs(Dicom->xCoords[0] - Dicom->xCoords[Dicom->width -1])*rescale)/vx)*0.5 );
+	zdataStart = (int)floor(((EPIDz - fabs(Dicom->zCoords[0] - Dicom->zCoords[Dicom->numSlices-1])*rescale)/vz)*0.5);
 	
 	//calculate the number of voxels
 	EGS->xSize = (int)floor(EPIDx/vx); // x dimension of the EPID
 	EGS->ySize = (int)floor(((fabs(Dicom->yCoords[0] - Dicom->yCoords[Dicom->height -1])*rescale))/vy)+airPadding+EPIDVoxels;
-	EGS->zSize = (int)floor((fabs(Dicom->zCoords[0] - Dicom->zCoords[Dicom->numSlices -1])*rescale)/vz);
+	EGS->zSize = (int)floor(EPIDz/vz); // z dimesion of EPID
 
 	// print out some grid stats
 	printf("Original Volume Dimensions: %d %d %d\n",Dicom->width,Dicom->height,Dicom->numSlices);
@@ -396,20 +397,61 @@ void ConvertDICOMToEGSPhant(DICOMReader* Dicom,EGSPhant* EGS){
 	}
 
 	//for each voxel
-	for(k=0;k<EGS->zSize;k++)
+	for (k=0; k<zdataStart;k++)
+	{
+		for (j=0; j<EGS->ySize-EPIDVoxels;j++)
+		{
+			for (i=0;i<EGS->xSize;i++)
+			{
+				EGS->voxelMedium[k][j][i] = '1';
+				EGS->voxelDensity[k][j][i] = AIRDENSE;
+			}
+		}
+		//now for the EPID
+
+		EPIDtop = EGS->ySize-EPIDVoxels;
+		a=0;
+		b=0;
+		startLayer =0;
+
+		//for each EPID Layer
+		for(w=0;w<totalEPIDLayers;w++)
+		{
+			//we get the start and end of this Layer in voxels
+			a = startLayer;
+			b = startLayer+(int)ceil(EPIDLayerInfo[w][2]/vy);
+
+			//for the rows in this Layer
+			for(j=EPIDtop+a; j<EPIDtop+b; j++)
+			{
+				// write the Material Category
+				for(i=0; i<EGS->xSize; i++)
+				{
+					sprintf(temp,"%d",(int)EPIDLayerInfo[w][0]);
+					EGS->voxelMedium[k][j][i] = temp[0];
+					EGS->voxelDensity[k][j][i] = EPIDLayerInfo[w][1];
+				}
+			}
+
+			//set up for next Layer
+			startLayer = b; 
+		}
+	}
+
+	for(k=zdataStart; k<EGS->zSize-zdataStart; k++)
 	{
 		//the section where the CT data will be written
 		for(j=0;j<EGS->ySize-airPadding-EPIDVoxels;j++)
 		{
 			//pad with air in columes before data
-			for(i=0;i<dataStart;i++)
+			for(i=0;i<xdataStart;i++)
 			{
 				EGS->voxelMedium[k][j][i] = '1';
 				EGS->voxelDensity[k][j][i] = AIRDENSE;
 			}//end for i
 
 			//categorise all voxels in data grid and interpolate the densities
-			for(i=dataStart;i<EGS->xSize-dataStart;i++)
+			for(i=xdataStart;i<EGS->xSize-xdataStart;i++)
 			{
 				total =0; //sum the data values on the voxel vertices
 				nonZero = 0; // keeps track of non-air vertices for weighting
@@ -420,7 +462,7 @@ void ConvertDICOMToEGSPhant(DICOMReader* Dicom,EGSPhant* EGS){
 				for (w=0;w<8;w++)
 				{	
 					// use the voxel indecies to map to the indices of the surrounding DICOM grid points 
-					lr = (float)((i-dataStart+(w & 1)))*dx;
+					lr = (float)((i-xdataStart+(w & 1)))*dx;
 					ls = (float)((j+((w & 2)>>1)))*dy;
 					lt = (float)((k+((w & 4)>>2)))*dz;
 					idx = (int)floor(lr);
@@ -501,7 +543,7 @@ void ConvertDICOMToEGSPhant(DICOMReader* Dicom,EGSPhant* EGS){
 			}//end for i
 
 			//pad with air the columns following the data 
-			for(i=EGS->xSize-dataStart; i<EGS->xSize; i++)
+			for(i=EGS->xSize-xdataStart; i<EGS->xSize; i++)
 			{
 				EGS->voxelMedium[k][j][i] = '1';
 				EGS->voxelDensity[k][j][i] = AIRDENSE;
@@ -549,6 +591,48 @@ void ConvertDICOMToEGSPhant(DICOMReader* Dicom,EGSPhant* EGS){
 			startLayer = b; 
 		}
 		
+	}
+
+	//for each voxel
+	for (k=EGS->zSize-zdataStart; k<EGS->zSize;k++)
+	{
+		for (j=0; j<EGS->ySize-EPIDVoxels;j++)
+		{
+			for (i=0;i<EGS->xSize;i++)
+			{
+				EGS->voxelMedium[k][j][i] = '1';
+				EGS->voxelDensity[k][j][i] = AIRDENSE;
+			}
+		}
+		//now for the EPID
+
+		EPIDtop = EGS->ySize-EPIDVoxels;
+		a=0;
+		b=0;
+		startLayer =0;
+
+		//for each EPID Layer
+		for(w=0;w<totalEPIDLayers;w++)
+		{
+			//we get the start and end of this Layer in voxels
+			a = startLayer;
+			b = startLayer+(int)ceil(EPIDLayerInfo[w][2]/vy);
+
+			//for the rows in this Layer
+			for(j=EPIDtop+a; j<EPIDtop+b; j++)
+			{
+				// write the Material Category
+				for(i=0; i<EGS->xSize; i++)
+				{
+					sprintf(temp,"%d",(int)EPIDLayerInfo[w][0]);
+					EGS->voxelMedium[k][j][i] = temp[0];
+					EGS->voxelDensity[k][j][i] = EPIDLayerInfo[w][1];
+				}
+			}
+
+			//set up for next Layer
+			startLayer = b; 
+		}
 	}
 
 	// now just write the boundary points (we can just calculate 'em using the start coords and voxel dimensions)
