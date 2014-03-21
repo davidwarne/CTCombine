@@ -3,11 +3,13 @@
 
   Combining files in the EGSPhant format.
 
-  Currently, version 0.1
+  Currently, version 0.11
 
   Features:
    Will read two (2) egsphant files, combine them and write out.  No smarts implemented.
   
+  Changes from 0.1
+	- fixed integer writing to a specified number of characters
 
 # Author
 #--------

@@ -36,6 +36,8 @@ namespace EGS
 			int Read(void);
 			int Write(void);
 
+			int WriteInteger(FILE *file, int num, int length);
+
 			int PrintStats(void);
 
 		public:
@@ -211,9 +213,12 @@ namespace EGS
 		}
 		fprintf(file, "\n");
 		// Write the number of voxels in each dimension
-		fprintf(file, "%d ", xSize);
-		fprintf(file, "%d ", ySize);
-		fprintf(file, "%d ", zSize);
+		//fprintf(file, "%d ", xSize);
+		WriteInteger(file, xSize, 5);
+		//fprintf(file, "%d ", ySize);
+		WriteInteger(file, ySize, 5);
+		//fprintf(file, "%d ", zSize);
+		WriteInteger(file, zSize, 5);
 		fprintf(file, "\n");
 		// Write xBoundaries
 		for (i = 0; i<(xSize+1); i++)
@@ -269,6 +274,29 @@ namespace EGS
 		fclose(file);
 		fprintf(stdout, "%s successfully written!\n", input_filename);
 	};
+
+
+	/*
+	 *  Write an Integer to file that has a character length
+	 *
+	 *
+	 */
+	int EGSPhant::WriteInteger(FILE *file, int num, int length)
+	{
+		char numAsChar[length+1];
+		if (num < 10)
+			sprintf(numAsChar, "    %d", num);
+		else if (num < 100)
+			sprintf(numAsChar, "   %d", num);
+		else if (num < 1000)
+			sprintf(numAsChar, "  %d", num);
+		else if (num < 10000)
+			sprintf(numAsChar, " %d", num);
+
+		fprintf(file, "%s",numAsChar);
+	};
+
+	
 
 
 	int EGSPhant::PrintStats(void)

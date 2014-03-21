@@ -88,7 +88,7 @@ void Combine_EGSPHANT(const char *ct_filename, const char *epid_filename, const 
 	for (i = 0; i<(epid_data.ySize+1); i++)
 		combine.yBoundaries[i] = epid_data.yBoundaries[i];
 	for (i = 1; i<(ct_data.ySize+1); i++)
-		combine.yBoundaries[epid_data.ySize + 1 + i] = ct_data.yBoundaries[i];
+		combine.yBoundaries[epid_data.ySize + i] = ct_data.yBoundaries[i];
 	// Z dimension - No Change
 	combine.zBoundaries = new float[ct_data.zSize+1];
 	for (i = 0; i<(ct_data.zSize+1); i++)
@@ -143,6 +143,8 @@ void Combine_EGSPHANT(const char *ct_filename, const char *epid_filename, const 
 
 int main(int argc, char* argv[])
 {
+
+	
 	// Count the command line arguements
 	if (argc < 4 || argc > 4)
 	{
@@ -156,14 +158,14 @@ int main(int argc, char* argv[])
 		std::string output_filename(argv[3]);	
 		Combine_EGSPHANT(ct_filename.c_str(), epid_filename.c_str(), output_filename.c_str());
 	}
+	/*
+	std::string output_filename = "output.egsphant";	
+	Get_EGSPHANT_Stats(ct_filename.c_str());
 
-	//string ct_filename = "output.egsphant";	
-	//Get_EGSPHANT_Stats(ct_filename.c_str());
-
-	//string ct_filename = "./Data/Second/cthead.egsphant";
-	//string epid_filename = "./Data/Second/EPID_for_cthead.egsphant";	
-	//Combine_EGSPHANT(ct_filename.c_str(), epid_filename.c_str());
-	
+	std::string ct_filename = "./Data/Second/cthead.egsphant";
+	std::string epid_filename = "./Data/Second/EPID_for_cthead.egsphant";	
+	Combine_EGSPHANT(ct_filename.c_str(), epid_filename.c_str(), output_filename.c_str());
+	*/
 
 	return 0;
 }
