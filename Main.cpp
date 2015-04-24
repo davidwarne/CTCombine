@@ -1,9 +1,25 @@
+/* CTCombine: A Tool for egsphant creation and manipulation.
+ * Copyright (C) 2015 David Warne and Mark Dwyer
+ * 
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
 /**
  * Main.cpp (how descriptive)
  *
  * @Authors: Mark Dwyer, David Warne
  * @Contact: m2.dwyer@qut.edu.au, david.warne@qut.edu.au
- * @Last Modified: 19/03/2009
+ * @Last Modified: 24/04/2015
  *
  * Summary:
  *    Makes use of DicomReader and EGSPhant objects to re-orientate and convert data from DICOM to EGSPhant format.
@@ -29,7 +45,10 @@ using namespace DICOM;
 #define DEFAULT_VOXEL_SIZE 0.5
 #define BUFFER_SIZE 255
 #define AIRDENSE 0.001
-#define VERSION 0.195
+#define PROGNAME "CTCombine"
+#define VERSION 0.2
+#define YEAR 2015
+#define AUTHOR "David Warne and Mark Dwyer"
 #define HITS_MAX 100
 
 /* Globals to storge input argument and file read data
@@ -964,6 +983,17 @@ int printHelp(){
 	printf("-v                       Prints Version Number\n");
 }
 
+void printHeading()
+{
+	printf("+-------------------------------------------------------------+\n");
+	printf("||                      CTCombine                            ||\n");
+	printf("+-------------------------------------------------------------+\n");
+    printf("\n %s v %0.02f Copyright (C) %d %s\n",PROGNAME,VERSION,YEAR,AUTHOR);
+    printf(" This program comes with ABSOLUTELY NO WARRANTY.\n");
+    printf(" This is free software, and you are welcome to redistribute it\n");
+    printf(" under certain conditions.\n");
+}
+
 /* READARGS: Reads the commandline arguments passed to CTCombine
  */
 int ReadArgs(int argc, char* argv[]){
@@ -1033,12 +1063,12 @@ int ReadArgs(int argc, char* argv[]){
 			}
 			else if (!strcmp(argv[i],"-v"))
 			{
-				printf("CTCombine: version %f\n",VERSION);
+                printHeading();
 				printf("Authors:\n");
-				printf("\t Mark Dwyer,\t (m2.dwyer@qut.edu.au)\n");
 				printf("\t David Warne,\t (david.warne@qut.edu.au)\n");
+				printf("\t Mark Dwyer,\t (m2.dwyer@qut.edu.au)\n");
 				printf("\n");
-				printf("HPC and Research Support, Queensland University of Technology\n");
+				printf("\t High Performance Computing and Research Support\n\t Queensland University of Technology\n");
 				exit(0);
 			}
 			else
@@ -1056,12 +1086,6 @@ int ReadArgs(int argc, char* argv[]){
 	return 0;
 }
 
-void printHeading()
-{
-	printf("+-------------------------------------------------------------+\n");
-	printf("||                      CTCombine                            ||\n");
-	printf("+-------------------------------------------------------------+\n\n");
-}
 
 void PrintRotationData()
 {
